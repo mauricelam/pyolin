@@ -1,41 +1,36 @@
 #!/usr/bin/env python3
 
-import argparse
 import ast
-import collections
+from . import ast_scope
 import collections.abc
+import csv
 import functools
 import importlib
+import io
 import itertools
 import re
 import sys
+import textwrap
 import tokenize
-try:
-    import pandas as pd
-except ImportError:
-    pd = None
 
 
 from contextlib import contextmanager
-from hashbang import command, Argument
 
 
-SCOPES = ('df', 'file', 'contents', 'records', 'lines', 'record', 'line',
-          'fields')
+pd = None
+LINE_SCOPED = {'record', 'line', 'fields'}
 
 
 def get_loaded_names(node):
-    return {
-        child.id for child in ast.walk(node)
-        if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Load)
-    }
+    scope_info = ast_scope.annotate(node)
+    debug('scope_info', scope_info)
+    return scope_info.global_scope.symbols_in_frame
 
 
-def get_scope(node):
-    loaded_names = get_loaded_names(node)
-    for name in SCOPES:
-        if name in loaded_names:
-            return name
+def is_line_scoped(exec_statements, eval_expr):
+    loaded_names = (get_loaded_names(exec_statements) |
+                    get_loaded_names(eval_expr))
+    return bool(loaded_names & LINE_SCOPED)
 
 
 @contextmanager
@@ -52,10 +47,128 @@ def get_contents(input_file):
         return f.read()
 
 
-def gen_records(input_file):
+def gen_split(stream, delimiter):
+    buf = ''
+    while True:
+        chunk = stream.read(1)
+        if not chunk:
+            if buf:
+                yield buf
+            break
+        buf += chunk
+        while True:
+            match = re.search(delimiter, buf)
+            if not match:
+                break
+            yield buf[:match.start()]
+            buf = ''
+
+
+class AbstractParser:
+    default_fs = r'[ \t]+'
+    default_rs = r'\n'
+
+    def __init__(self, record_separator, field_separator):
+        self.record_separator = record_separator or self.default_rs
+        self.field_separator = field_separator or self.default_fs
+
+    def parserecord(self, recordstr):
+        raise NotImplemented()
+
+    def records(self, stream):
+        for recordstr in gen_split(stream, self.record_separator):
+            yield Record(self.parserecord(recordstr), recordstr)
+
+
+class AwkParser(AbstractParser):
+    def parserecord(self, recordstr):
+        return re.split(self.field_separator, recordstr)
+
+
+class CustomSniffer(csv.Sniffer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dialect = None
+
+    def sniff(self, *args, **kwargs):
+        if self.dialect is not None:
+            return self.dialect
+        self.dialect = super().sniff(*args, **kwargs)
+        self.dialect.doublequote = 'undecided'  # Truthy-value
+        return self.dialect
+
+    def update_dialect(self, line):
+        if self.dialect.doublequote != 'undecided':
+            return False
+        if re.search(r'[^\\]""', line):
+            self.dialect.doublequote = True
+            return False
+        elif '\\"' in line:
+            self.dialect.doublequote = False
+            self.dialect.escapechar = '\\'
+            return True
+
+
+class CsvParser(AbstractParser):
+    default_fs = r','
+
+    def records(self, stream):
+        stream1, stream2, stream3 = itertools.tee(
+            gen_split(stream, self.record_separator), 3)
+        sniff_sample = '\n'.join(
+            line for line in itertools.islice(stream3, 0, 5))
+        sniffer = CustomSniffer()
+        dialect = sniffer.sniff(sniff_sample, delimiters=self.field_separator)
+        csv_reader = csv.reader(stream2, sniffer.dialect)
+        for lineno, line in enumerate(stream1):
+            if sniffer.update_dialect(line):
+                csv_reader = csv.reader(
+                    stream2, sniffer.dialect, delimiter=self.field_separator)
+            fields = next(csv_reader)
+            if lineno == 0 and sniffer.has_header(sniff_sample):
+                yield Header(fields, line)
+            else:
+                yield Record(fields, line)
+
+
+class CsvDialectParser(AbstractParser):
+    default_fs = r','
+
+    def __init__(self, *args, dialect, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.dialect = dialect
+
+    def records(self, stream):
+        stream1, stream2 = itertools.tee(
+            gen_split(stream, self.record_separator))
+        csv_reader = csv.reader(
+            stream2, self.dialect, delimiter=self.field_separator)
+        for line in stream1:
+            fields = next(csv_reader)
+            yield Record(fields, line)
+
+
+def create_parser(input_format, record_separator, field_separator):
+    if input_format == 'awk':
+        return AwkParser(record_separator, field_separator)
+    elif input_format == 'csv':
+        return CsvParser(record_separator, field_separator)
+    elif input_format == 'csv_excel':
+        return CsvDialectParser(
+            record_separator, field_separator, dialect=csv.excel)
+    elif input_format == 'csv_unix':
+        return CsvDialectParser(
+            record_separator, field_separator, dialect=csv.unix_dialect)
+    else:
+        raise ValueError(f'Unknown input format {input_format}')
+
+
+def gen_records(
+        input_file, *, input_format, record_separator, field_separator):
     with get_io(input_file) as f:
-        for line in f:
-            yield Record.fromstring(line.rstrip())
+        parser = create_parser(input_format, record_separator, field_separator)
+        for record in parser.records(f):
+            yield record
 
 
 class LazySequence(collections.abc.Iterable):
@@ -106,7 +219,7 @@ def debug(*args):
     print(*args, file=sys.stderr)
 
 
-def print_result(result, scope):
+def print_result(result):
     """
     Result is a sequence of strings or sequence. Sequences will be formatted to
     tab-separated.
@@ -375,24 +488,43 @@ def memoize(obj):
 
 
 class Record(tuple):
-    def __new__(cls, args, line):
-        return super().__new__(cls, tuple(args))
+    def __new__(cls, args, recordstr):
+        return super().__new__(cls, tuple(Field(f) for f in args))
 
-    def __init__(self, args, line):
-        self.line = line
+    def __init__(self, args, recordstr):
+        self.str = recordstr
 
-    @staticmethod
-    def fromstring(line):
-        return Record([Field(f) for f in re.split(r'[ \t]+', line)], line=line)
+
+class Header(Record):
+    pass
 
 
 class LazyDict(dict):
     @memoize
     def __getitem__(self, key):
-        return dict.__getitem__(self, key)()
+        value = dict.__getitem__(self, key)
+        if isinstance(value, LazyItem):
+            return value()
+        return value
 
-    def __setitem__(self, key, value):
-        return dict.__setitem__(self, key, lambda: value)
+
+class LazyItem:
+    def __init__(self, func):
+        self.func = func
+
+    def __call__(self, *arg, **kwargs):
+        return self.func(*arg, **kwargs)
+
+
+def _importpandas():
+    global pd
+    import pandas as pd
+    return pd
+
+
+def _importnumpy():
+    import numpy as np
+    return np
 
 
 def _add_globals(dictionary, modules):
@@ -400,94 +532,98 @@ def _add_globals(dictionary, modules):
         module = importlib.import_module(module_name)
         dictionary[module_name] = module
     dictionary['re'] = re
-    if pd:
-        dictionary['pd'] = pd
+    dictionary['pd'] = LazyItem(lambda: _importpandas())
+    dictionary['np'] = LazyItem(lambda: _importnumpy())
 
 
-@command(
-    Argument('modules', aliases='m', append=True),
-    formatter_class=argparse.RawDescriptionHelpFormatter)
-def pol(prog, input_file=None, *, modules=()):
-    '''
-    pol - Python one liners to easily parse and process data in Python.
+def split_last_statement(tokens):
+    for tok in reversed(tokens):
+        if tok.type == 53 and tok.string == ';':
+            # Assumes the program is always one-line
+            return tok.start[1], tok.end[1]
+    return 0, 0
 
-    Pol processes text information from stdin or a given file and evaluates
-    the given input `prog` and prints the result.
 
-    Example:
-        pol 'record[0] + record[1] if record[2] > 50'
-
-    In pol, the input file is treated as a table, which consists of many
-    records (lines). Each record is then consisted of many fields (columns).
-    The separator for records and fields are configurable. (Using what???)
-
-    Available variables:
-      - Record scoped:
-        record, fields - A tuple of the fields in the current line.
-            Additionally, `record.line` gives the original string of the given
-            line before processing.
-        line – Alias for `record.line`.
-
-        When referencing a variable in record scope, `prog` must not access
-        any other variables in table scope. In this mode, pol iterates through
-        each record from the input file and prints the result of `prog`.
-
-      - Table scoped:
-        records – A sequence of records (as described in "Record scoped"
-            section above).
-        lines – A sequence of lines (as described in "Record scoped" section
-            above).
-        file, contents – Contents of the entire file as a single string.
-        df – Contents of the entire file as a pandas.DataFrame. (Available
-            only if pandas is installed).
-      - General:
-        filename – The name of the file being processed, possibly None if
-            reading from stdin.
-        re – The regex module.
-        pd – The pandas module, if installed.
-    '''
+def parse_prog(prog):
+    prog_io = io.StringIO(prog)
+    tokens = list(tokenize.generate_tokens(prog_io.readline))
+    split_start, split_end = split_last_statement(tokens)
+    try:
+        exec_statements = ast.parse(prog[:split_start], mode='exec')
+    except SyntaxError as e:
+        raise RuntimeError(textwrap.dedent(
+            f'''\
+            Invalid syntax:
+              {prog[:split_start]}
+              {" "*(e.offset-1)}^'''))
     try:
         # Try to parse as generator expression (the common case)
-        prog_ast = ast.parse(f'({prog})', mode='eval')
-    except SyntaxError:
+        eval_expr = ast.parse(f'({prog[split_end:]})', mode='eval')
+    except SyntaxError as e:
         # Try to parse as <expr> if <condition>
-        prog_ast = ast.parse(f'{prog} else None', mode='eval')
-    debug(ast.dump(prog_ast))
-    compiled = compile(prog_ast, filename='pol_user_prog.py', mode='eval')
-    scope = get_scope(prog_ast)
-    if scope in ('record', 'line', 'fields'):
+        try:
+            eval_expr = ast.parse(f'{prog[split_end:]} else None', mode='eval')
+        except SyntaxError:
+            raise RuntimeError(textwrap.dedent(
+                f'''\
+                Invalid syntax:
+                  {prog[split_end:]}
+                  {" "*(e.offset-2)}^'''))
+    debug(ast.dump(eval_expr))
+    return exec_statements, eval_expr, is_line_scoped(exec_statements, eval_expr)
+
+
+def pol(prog, input_file=None, *,
+        field_separator=None,
+        record_separator='\n',
+        input_format='awk',
+        modules=()):
+    exec_statements, eval_expr, line_scoped = parse_prog(prog)
+    debug('eval', ast.dump(exec_statements), ast.dump(eval_expr))
+    exec_compiled = compile(exec_statements,
+                            filename='pol_user_prog.py', mode='exec')
+    eval_compiled = compile(eval_expr,
+                            filename='pol_user_prog.py', mode='eval')
+    record_seq = LazySequence(
+        gen_records(
+            input_file,
+            input_format=input_format,
+            record_separator=record_separator,
+            field_separator=field_separator))
+    if line_scoped:
         def _gen_result():
-            for record in gen_records(input_file):
-                global_dict = {
+            for record in record_seq:
+                global_dict = LazyDict({
                     'record': record,
-                    'line': record.line,
+                    'line': record.str,
                     'fields': record,
                     'filename': input_file,
-                }
+                })
                 _add_globals(global_dict, modules)
-                yield eval(compiled, global_dict)
+                exec(exec_compiled, global_dict)
+                yield eval(eval_compiled, global_dict)
         result = _gen_result()
     else:
         def get_dataframe():
-            if pd:
-                df = pd.DataFrame(gen_records(input_file))
-                df = df.apply(pd.to_numeric, errors='ignore')
-                return df
+            pd = _importpandas()
+            firstrow = record_seq[0]
+            if isinstance(firstrow, Header):
+                df = pd.DataFrame(
+                    record_seq[1:],
+                    columns=[f.str for f in firstrow])
             else:
-                raise ModuleNotFoundError('Module pandas cannot be found')
+                df = pd.DataFrame(record_seq)
+            df = df.apply(pd.to_numeric, errors='ignore')
+            return df
         global_dict = LazyDict({
-            'lines':
-                lambda: LazySequence(r.line for r in gen_records(input_file)),
-            'records': lambda: LazySequence(gen_records(input_file)),
-            'filename': lambda: input_file,
-            'file': lambda: get_contents(input_file),
-            'contents': lambda: get_contents(input_file),
-            'df': get_dataframe,
+            'lines': LazySequence(r.str for r in record_seq),
+            'records': record_seq,
+            'filename': input_file,
+            'file': LazyItem(lambda: get_contents(input_file)),
+            'contents': LazyItem(lambda: get_contents(input_file)),
+            'df': LazyItem(get_dataframe),
         })
         _add_globals(global_dict, modules)
-        result = eval(compiled, global_dict)
-    print_result(result, scope)
-
-
-if __name__ == '__main__':
-    pol.execute()
+        exec(exec_compiled, global_dict)
+        result = eval(eval_compiled, global_dict)
+    print_result(result)
