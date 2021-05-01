@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import ast
-from . import ast_scope
 import collections.abc
 import csv
 import functools
@@ -12,25 +11,13 @@ import re
 import sys
 import textwrap
 import tokenize
+import traceback
 
 
 from contextlib import contextmanager
 
 
 pd = None
-LINE_SCOPED = {'record', 'line', 'fields'}
-
-
-def get_loaded_names(node):
-    scope_info = ast_scope.annotate(node)
-    debug('scope_info', scope_info)
-    return scope_info.global_scope.symbols_in_frame
-
-
-def is_line_scoped(exec_statements, eval_expr):
-    loaded_names = (get_loaded_names(exec_statements) |
-                    get_loaded_names(eval_expr))
-    return bool(loaded_names & LINE_SCOPED)
 
 
 @contextmanager
@@ -500,7 +487,6 @@ class Header(Record):
 
 
 class LazyDict(dict):
-    @memoize
     def __getitem__(self, key):
         value = dict.__getitem__(self, key)
         if isinstance(value, LazyItem):
@@ -509,8 +495,8 @@ class LazyDict(dict):
 
 
 class LazyItem:
-    def __init__(self, func):
-        self.func = func
+    def __init__(self, func, cache=True):
+        self.func = memoize(func) if cache else func
 
     def __call__(self, *arg, **kwargs):
         return self.func(*arg, **kwargs)
@@ -570,7 +556,69 @@ def parse_prog(prog):
                   {prog[split_end:]}
                   {" "*(e.offset-2)}^'''))
     debug(ast.dump(eval_expr))
-    return exec_statements, eval_expr, is_line_scoped(exec_statements, eval_expr)
+    return exec_statements, eval_expr
+
+
+class Scope:
+    def __init__(self):
+        self.scope = 'undecided'
+
+    def set_scope(self, scope):
+        if self.scope == scope:
+            return False
+        if self.scope != 'undecided':
+            raise RuntimeError(
+                'Cannot access both record scoped and table scoped variables')
+        self.scope = scope
+        return True
+
+
+class NoMoreRecords(StopIteration):
+    pass
+
+
+class RecordScoped(LazyItem):
+    def __init__(self, scope, generator):
+        self._iter = iter(generator)
+        self._scope = scope
+
+    def __call__(self, *args, **kwargs):
+        if self._scope.set_scope('record'):
+            self.next()
+        return self._val
+
+    def next(self):
+        '''
+        Advances to the next record in the generator. This is done manually so
+        that the value can be accessed multiple times within the same
+        iteration.
+        '''
+        try:
+            self._val = next(self._iter)
+        except StopIteration as e:
+            raise NoMoreRecords() from e
+
+
+class TableScoped(LazyItem):
+    def __init__(self, scope, *args):
+        self._scope = scope
+        super().__init__(*args)
+
+    def __call__(self, *args, **kwargs):
+        self._scope.set_scope('table')
+        return super().__call__(*args, **kwargs)
+
+
+class UserError(RuntimeError):
+
+    def formatted_tb(self):
+        return traceback.format_exception(
+            self.__cause__,
+            self.__cause__,
+            self.__cause__.__traceback__.tb_next)
+
+    def __str__(self):
+        return ''.join(self.formatted_tb()).rstrip('\n')
 
 
 def pol(prog, input_file=None, *,
@@ -578,7 +626,7 @@ def pol(prog, input_file=None, *,
         record_separator='\n',
         input_format='awk',
         modules=()):
-    exec_statements, eval_expr, line_scoped = parse_prog(prog)
+    exec_statements, eval_expr = parse_prog(prog)
     debug('eval', ast.dump(exec_statements), ast.dump(eval_expr))
     exec_compiled = compile(exec_statements,
                             filename='pol_user_prog.py', mode='exec')
@@ -590,40 +638,60 @@ def pol(prog, input_file=None, *,
             input_format=input_format,
             record_separator=record_separator,
             field_separator=field_separator))
-    if line_scoped:
-        def _gen_result():
-            for record in record_seq:
-                global_dict = LazyDict({
-                    'record': record,
-                    'line': record.str,
-                    'fields': record,
-                    'filename': input_file,
-                })
-                _add_globals(global_dict, modules)
-                exec(exec_compiled, global_dict)
-                yield eval(eval_compiled, global_dict)
-        result = _gen_result()
-    else:
-        def get_dataframe():
-            pd = _importpandas()
-            firstrow = record_seq[0]
-            if isinstance(firstrow, Header):
-                df = pd.DataFrame(
-                    record_seq[1:],
-                    columns=[f.str for f in firstrow])
-            else:
-                df = pd.DataFrame(record_seq)
-            df = df.apply(pd.to_numeric, errors='ignore')
-            return df
-        global_dict = LazyDict({
-            'lines': LazySequence(r.str for r in record_seq),
-            'records': record_seq,
-            'filename': input_file,
-            'file': LazyItem(lambda: get_contents(input_file)),
-            'contents': LazyItem(lambda: get_contents(input_file)),
-            'df': LazyItem(get_dataframe),
-        })
-        _add_globals(global_dict, modules)
+
+    scope = Scope()
+
+    def record_scoped(generator):
+        return RecordScoped(scope, generator)
+
+    def table_scoped(func):
+        return TableScoped(scope, func)
+
+    def get_dataframe():
+        pd = _importpandas()
+        firstrow = record_seq[0]
+        if isinstance(firstrow, Header):
+            df = pd.DataFrame(
+                record_seq[1:],
+                columns=[f.str for f in firstrow])
+        else:
+            df = pd.DataFrame(record_seq)
+        df = df.apply(pd.to_numeric, errors='ignore')
+        return df
+
+    record_var = record_scoped(record_seq)
+    global_dict = LazyDict({
+        'lines': table_scoped(lambda: LazySequence(r.str for r in record_seq)),
+        'records': table_scoped(lambda: record_seq),
+        'filename': input_file,
+        'file': table_scoped(lambda: get_contents(input_file)),
+        'contents': table_scoped(lambda: get_contents(input_file)),
+        'df': table_scoped(get_dataframe),
+        'record': record_var,
+        'line': LazyItem(lambda: record_var().str, cache=False),
+        'fields': record_var,
+    })
+    _add_globals(global_dict, modules)
+    try:
         exec(exec_compiled, global_dict)
         result = eval(eval_compiled, global_dict)
-    print_result(result)
+    except NoMoreRecords:
+        pass
+    except Exception as e:
+        raise UserError() from e
+    else:
+        if scope.scope == 'record':
+            _result = result
+
+            def _gen_result():
+                yield _result
+                while True:
+                    try:
+                        record_var.next()
+                    except NoMoreRecords:
+                        break
+                    exec(exec_compiled, global_dict)
+                    yield eval(eval_compiled, global_dict)
+
+            result = _gen_result()
+        print_result(result)

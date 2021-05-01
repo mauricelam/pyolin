@@ -44,10 +44,15 @@ class ScopeInfo:
     def __getitem__(self, node):
         return self._node_to_containing_scope[node]
 
-def annotate(tree, class_binds_near=False):
+
+def annotate(tree, class_binds_near=False, return_dict=False):
     annotation_dict = {}
     annotator = AnnotateScope(IntermediateGlobalScope(), annotation_dict, class_binds_near=class_binds_near)
     annotator.visit(tree)
+    print('annotation_dict', annotation_dict)
+
+    if return_dict:
+        return annotation_dict
 
     pull_scopes = PullScopes(annotation_dict)
     pull_scopes.visit(tree)

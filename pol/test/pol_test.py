@@ -1,69 +1,21 @@
 import contextlib
-import io
 import os
 from pol import pol
-import signal
 import subprocess
 import sys
 import textwrap
+import traceback
 import unittest
-
-
-class SubprocessError(Exception):
-
-    def __init__(self, error, stderr, prog):
-        self.error = error
-        self.stderr = stderr
-        self.prog = prog
-
-    def __str__(self):
-        result = ['', f'Prog: {self.prog}']
-        if self.stderr:
-            result += [
-                '',
-                '===== STDERR =====',
-                str(self.stderr),
-                '=================='
-            ]
-        if self.error:
-            result += [
-                '',
-                '===== ERROR =====',
-                str(self.error),
-                '================='
-            ]
-        return '\n'.join(result)
-
-
-class timeout:
-    def __init__(self, seconds, error_message='Timeout'):
-        self.seconds = seconds
-        self.error_message = error_message
-
-    def handle_timeout(self, signum, frame):
-        raise TimeoutError(self.error_message)
-
-    def __enter__(self):
-        signal.signal(signal.SIGALRM, self.handle_timeout)
-        signal.alarm(self.seconds)
-
-    def __exit__(self, type, value, traceback):
-        signal.alarm(0)
+from .utils import *
 
 
 def run_pol(prog, *, data='data_nba.txt', **extra_args):
-    out = io.StringIO()
-    err = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        with contextlib.redirect_stderr(err):
-            try:
-                pol.pol(
-                    prog,
-                    os.path.join(os.path.dirname(__file__), data),
-                    **extra_args)
-            except Exception as e:
-                raise SubprocessError(e, err.getvalue(), prog) from e
-    return out.getvalue()
+    with run_capturing_output(errmsg=f'Prog: {prog}') as output:
+        pol.pol(
+            prog,
+            os.path.join(os.path.dirname(__file__), data),
+            **extra_args)
+        return output.getvalue()
 
 
 @contextlib.contextmanager
@@ -918,7 +870,7 @@ class PolTest(unittest.TestCase):
             ''')
 
     def testSyntaxError(self):
-        with self.assertRaises(SubprocessError) as context:
+        with self.assertRaises(ErrorWithStderr) as context:
             run_pol('a..x')
         self.assertEqual(
             textwrap.dedent('''\
@@ -928,7 +880,7 @@ class PolTest(unittest.TestCase):
             str(context.exception.__cause__))
 
     def testSyntaxErrorInStatement(self):
-        with self.assertRaises(SubprocessError) as context:
+        with self.assertRaises(ErrorWithStderr) as context:
             run_pol('a..x; a+1')
         self.assertEqual(
             textwrap.dedent('''\
@@ -963,6 +915,47 @@ class PolTest(unittest.TestCase):
             2
             ''')
 
+    def testAccessRecordAndTable(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('a = record[0]; b = records; b')
+        self.assertEqual(
+            'Cannot access both record scoped and table scoped variables',
+            str(context.exception.__cause__.__cause__))
+
+    def testAccessTableAndRecord(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('a = records; b = record[0]; b')
+        self.assertEqual(
+            'Cannot access both record scoped and table scoped variables',
+            str(context.exception.__cause__.__cause__))
+
+    def testEmptyRecordScoped(self):
+        self.assertPol(
+            'record[0]',
+            '',
+            data=os.devnull)
+
+    def testEmptyTableScoped(self):
+        self.assertPol(
+            'record for record in records',
+            '',
+            data=os.devnull)
+
+    def testSemicolonInString(self):
+        self.assertPol(
+            '"hello; world"',
+            'hello; world\n')
+
+    def testStackTraceCleaning(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('urllib.parse.quote(12345)', modules=('urllib',))
+        formatted = context.exception.__cause__.formatted_tb()
+        self.assertEqual(5, len(formatted))
+        self.assertTrue('Traceback (most recent call last)' in formatted[0])
+        self.assertTrue('pol_user_prog.py' in formatted[1])
+        self.assertTrue('return quote_from_bytes' in formatted[2])
+        self.assertTrue('"quote_from_bytes() expected bytes"' in formatted[3])
+        self.assertTrue('quote_from_bytes() expected bytes' in formatted[4])
+
 
     # Support different output formats (unix, csv, markdown)
-    # Clean up the stack trace
