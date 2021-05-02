@@ -7,6 +7,7 @@ import functools
 import importlib
 import io
 import itertools
+import os
 import re
 import sys
 import textwrap
@@ -203,10 +204,11 @@ class LazySequence(collections.abc.Iterable):
 
 
 def debug(*args):
-    print(*args, file=sys.stderr)
+    if os.getenv('DEBUG'):
+        print(*args, file=sys.stderr)
 
 
-def print_result(result):
+def print_result(result, *, output_format):
     """
     Result is a sequence of strings or sequence. Sequences will be formatted to
     tab-separated.
@@ -218,12 +220,14 @@ def print_result(result):
             return record.decode('utf-8')
         elif isinstance(record, collections.abc.Iterable):
             return ' '.join(format_record(i) for i in record)
+        elif isinstance(record, float):
+            return '{0:.6g}'.format(record)
         else:
             return str(record)
 
     if pd and isinstance(result, pd.DataFrame):
-        print(result)
-    elif isinstance(result, (str, Record, tuple, bytes)):
+        result = (format_record(f) for i, f in result.iterrows())
+    if isinstance(result, (str, Record, tuple, bytes)):
         # Special cases for iterables that are treated as a single record
         print(format_record(result))
     elif isinstance(result, collections.abc.Iterable):
@@ -625,6 +629,7 @@ def pol(prog, input_file=None, *,
         field_separator=None,
         record_separator='\n',
         input_format='awk',
+        output_format='awk',
         modules=()):
     exec_statements, eval_expr = parse_prog(prog)
     debug('eval', ast.dump(exec_statements), ast.dump(eval_expr))
@@ -694,4 +699,4 @@ def pol(prog, input_file=None, *,
                     yield eval(eval_compiled, global_dict)
 
             result = _gen_result()
-        print_result(result)
+        print_result(result, output_format=output_format)

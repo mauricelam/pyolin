@@ -613,16 +613,14 @@ class PolTest(unittest.TestCase):
             ''')
 
     def testPandasDataframe(self):
-        # TODO: Remove the header rows, for easier continued parsing?
         self.assertPol(
             'df',
             '''\
-                     0             1   2   3      4
-            0    Bucks     Milwaukee  60  22  0.732
-            1  Raptors       Toronto  58  24  0.707
-            2    76ers  Philadelphia  51  31  0.622
-            3  Celtics        Boston  49  33  0.598
-            4   Pacers       Indiana  48  34  0.585
+            Bucks Milwaukee 60 22 0.732
+            Raptors Toronto 58 24 0.707
+            76ers Philadelphia 51 31 0.622
+            Celtics Boston 49 33 0.598
+            Pacers Indiana 48 34 0.585
             ''')
 
     def testPandasDtypes(self):
@@ -752,14 +750,13 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[[0, 1, 2]]',
             '''\
-                       0           1            2
-            0    Alfalfa    Aloysius  123-45-6789
-            1     Alfred  University  123-12-1234
-            2      Gerty      Gramma  567-89-0123
-            3    Android    Electric  087-65-4321
-            4   Franklin       Benny  234-56-2890
-            5     George         Boy  345-67-3901
-            6  Heffalump      Harvey  632-79-9439
+            Alfalfa Aloysius 123-45-6789
+            Alfred University 123-12-1234
+            Gerty Gramma 567-89-0123
+            Android Electric 087-65-4321
+            Franklin Benny 234-56-2890
+            George Boy 345-67-3901
+            Heffalump Harvey 632-79-9439
             ''',
             data='data_grades_simple_csv.csv',
             input_format='csv')
@@ -796,13 +793,12 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[[0,1,2]]',
             '''\
-                       0         1                                 2
-0                   John       Doe                 120 jefferson st.
-1                   Jack  McGinnis                      220 hobo Av.
-2          John "Da Man"    Repici                 120 Jefferson St.
-3                Stephen     Tyler  7452 Terrace "At the Plaza" road
-4                         Blankman                                  
-5  Joan "the bone", Anne       Jet               9th, at Terrace plc
+            John Doe 120 jefferson st.
+            Jack McGinnis 220 hobo Av.
+            John "Da Man" Repici 120 Jefferson St.
+            Stephen Tyler 7452 Terrace "At the Plaza" road
+             Blankman 
+            Joan "the bone", Anne Jet 9th, at Terrace plc
             ''',
             data='data_addresses.csv',
             input_format='csv')
@@ -811,13 +807,12 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[[0,1,2]]',
             '''\
-                       0         1                                 2
-0                   John       Doe                 120 jefferson st.
-1                   Jack  McGinnis                      220 hobo Av.
-2          John "Da Man"    Repici                 120 Jefferson St.
-3                Stephen     Tyler  7452 Terrace "At the Plaza" road
-4                         Blankman                                  
-5  Joan "the bone", Anne       Jet               9th, at Terrace plc
+            John Doe 120 jefferson st.
+            Jack McGinnis 220 hobo Av.
+            John "Da Man" Repici 120 Jefferson St.
+            Stephen Tyler 7452 Terrace "At the Plaza" road
+             Blankman 
+            Joan "the bone", Anne Jet 9th, at Terrace plc
             ''',
             data='data_addresses.csv',
             input_format='csv_excel')
@@ -893,14 +888,30 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[["Last name", "SSN", "Final"]]',
             '''\
-               Last name          SSN  Final
-            0    Alfalfa  123-45-6789   49.0
-            1     Alfred  123-12-1234   48.0
-            2      Gerty  567-89-0123   44.0
-            3    Android  087-65-4321   47.0
-            4   Franklin  234-56-2890   90.0
-            5     George  345-67-3901    4.0
-            6  Heffalump  632-79-9439   40.0
+            Alfalfa 123-45-6789 49
+            Alfred 123-12-1234 48
+            Gerty 567-89-0123 44
+            Android 087-65-4321 47
+            Franklin 234-56-2890 90
+            George 345-67-3901 4
+            Heffalump 632-79-9439 40
+            ''',
+            data='data_grades_with_header.csv',
+            input_format='csv')
+
+    def testPrintDataframeHeader(self):
+        self.assertPol(
+            'list(df.columns.values)',
+            '''\
+            Last name
+            First name
+            SSN
+            Test1
+            Test2
+            Test3
+            Test4
+            Final
+            Grade
             ''',
             data='data_grades_with_header.csv',
             input_format='csv')

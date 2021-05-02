@@ -1,2 +1,0 @@
-
-from .annotate import annotate
