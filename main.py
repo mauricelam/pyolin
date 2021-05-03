@@ -9,11 +9,14 @@ from hashbang import command, Argument
     Argument('modules', aliases='m', append=True),
     Argument('field_separator', aliases='F'),
     Argument('input_format', choices=('awk', 'tsv', 'csv')),
+    Argument('output_format', choices=('awk', 'unix', 'csv', 'csv_header',
+                                       'markdown', 'table')),
     formatter_class=argparse.RawDescriptionHelpFormatter)
 def main(prog, input_file=None, *,
          field_separator=None,
          record_separator='\n',
          input_format='awk',
+         output_format='awk',
          modules=()):
     '''
     pol - Python one liners to easily parse and process data in Python.
@@ -56,7 +59,9 @@ def main(prog, input_file=None, *,
     pol.pol(
         prog, input_file, field_separator=field_separator,
         record_separator=record_separator,
-        input_format=input_format, modules=modules)
+        input_format=input_format,
+        output_format=output_format,
+        modules=modules)
 
 
 if __name__ == '__main__':

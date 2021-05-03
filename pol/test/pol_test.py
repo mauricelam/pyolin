@@ -9,19 +9,23 @@ import unittest
 from .utils import *
 
 
+def _test_file(file):
+    return os.path.join(os.path.dirname(__file__), file)
+
+
 def run_pol(prog, *, data='data_nba.txt', **extra_args):
     with run_capturing_output(errmsg=f'Prog: {prog}') as output:
         pol.pol(
             prog,
-            os.path.join(os.path.dirname(__file__), data),
+            _test_file(data),
             **extra_args)
         return output.getvalue()
 
 
 @contextlib.contextmanager
-def polPopen(prog, **kwargs):
+def polPopen(prog, extra_args=[], **kwargs):
     with subprocess.Popen(
-        [sys.executable, 'main.py', prog],
+        [sys.executable, 'main.py', prog] + extra_args,
         stdin=kwargs.get('stdin', subprocess.PIPE),
         stdout=kwargs.get('stdout', subprocess.PIPE),
         stderr=kwargs.get('stderr', subprocess.PIPE),
@@ -35,10 +39,12 @@ class PolTest(unittest.TestCase):
 
     maxDiff = None
 
-    def assertPol(self, prog, expected_output, **kwargs):
+    def assertPol(
+            self, prog, expected_output, *, data='data_nba.txt', **kwargs):
         self.assertEqual(
-            run_pol(prog, **kwargs),
-            textwrap.dedent(expected_output))
+            run_pol(prog, data=data, **kwargs),
+            textwrap.dedent(expected_output),
+            msg=f'Prog: pol \'{prog}\' {_test_file(data)}')
 
     def testLines(self):
         self.assertPol(
@@ -968,5 +974,200 @@ class PolTest(unittest.TestCase):
         self.assertTrue('"quote_from_bytes() expected bytes"' in formatted[3])
         self.assertTrue('quote_from_bytes() expected bytes' in formatted[4])
 
+    def testInvalidOutputFormat(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('1+1', output_format='invalid')
+        self.assertEqual(
+            'Unrecognized output format "invalid"',
+            str(context.exception.__cause__))
 
-    # Support different output formats (unix, csv, markdown)
+    def testCsvOutputFormat(self):
+        self.assertPol(
+            'records',
+            '''\
+            Bucks,Milwaukee,60,22,0.732\r
+            Raptors,Toronto,58,24,0.707\r
+            76ers,Philadelphia,51,31,0.622\r
+            Celtics,Boston,49,33,0.598\r
+            Pacers,Indiana,48,34,0.585\r
+            ''',
+            output_format='csv')
+
+    def testCsvOutputNonTuple(self):
+        self.assertPol(
+            'record[2]',
+            '''\
+            60\r
+            58\r
+            51\r
+            49\r
+            48\r
+            ''',
+            output_format='csv')
+
+    def testCsvOutputQuoting(self):
+        self.assertPol(
+            'records',
+            '''\
+            John,Doe,120 jefferson st.,Riverside, NJ, 08075\r
+            Jack,McGinnis,220 hobo Av.,Phila, PA,09119\r
+            "John ""Da Man""",Repici,120 Jefferson St.,Riverside, NJ,08075\r
+            Stephen,Tyler,"7452 Terrace ""At the Plaza"" road",SomeTown,SD, 91234\r
+            ,Blankman,,SomeTown, SD, 00298\r
+            "Joan ""the bone"", Anne",Jet,"9th, at Terrace plc",Desert City,CO,00123\r
+            ''',
+            input_format='csv',
+            output_format='csv',
+            data='data_addresses.csv')
+
+    def testCsvOutputWithHeader(self):
+        self.assertPol(
+            'df[["Last name", "SSN", "Final"]]',
+            '''\
+            Last name,SSN,Final\r
+            Alfalfa,123-45-6789,49\r
+            Alfred,123-12-1234,48\r
+            Gerty,567-89-0123,44\r
+            Android,087-65-4321,47\r
+            Franklin,234-56-2890,90\r
+            George,345-67-3901,4\r
+            Heffalump,632-79-9439,40\r
+            ''',
+            data='data_grades_with_header.csv',
+            input_format='csv',
+            output_format='csv_header')
+
+    def testStreamingStdinCsv(self):
+        with polPopen('record', ['--output_format', 'csv']) as proc:
+            proc.stdin.write('Raptors Toronto    58 24 0.707\n')
+            proc.stdin.flush()
+            with timeout(2):
+                self.assertEqual(
+                    proc.stdout.readline(),
+                    'Raptors,Toronto,58,24,0.707\n')
+            proc.stdin.write('Celtics Boston     49 33 0.598\n')
+            proc.stdin.flush()
+            with timeout(2):
+                self.assertEqual(
+                    proc.stdout.readline(),
+                    'Celtics,Boston,49,33,0.598\n')
+
+    def testNumericHeader(self):
+        self.assertPol(
+            'record[0],record[2],record[7]',
+            '''\
+            0,1,2\r
+            Alfalfa,123-45-6789,49.0\r
+            Alfred,123-12-1234,48.0\r
+            Gerty,567-89-0123,44.0\r
+            Android,087-65-4321,47.0\r
+            Franklin,234-56-2890,90.0\r
+            George,345-67-3901,4.0\r
+            Heffalump,632-79-9439,40.0\r
+            ''',
+            data='data_grades_simple_csv.csv',
+            input_format='csv',
+            output_format='csv_header')
+
+    def testMarkdownOutput(self):
+        self.assertPol(
+            'df[["Last name", "SSN", "Final"]]',
+            '''\
+            | Last name | SSN         | Final |
+            | --------- | ----------- | ----- |
+            | Alfalfa   | 123-45-6789 | 49    |
+            | Alfred    | 123-12-1234 | 48    |
+            | Gerty     | 567-89-0123 | 44    |
+            | Android   | 087-65-4321 | 47    |
+            | Franklin  | 234-56-2890 | 90    |
+            | George    | 345-67-3901 | 4     |
+            | Heffalump | 632-79-9439 | 40    |
+            ''',
+            data='data_grades_with_header.csv',
+            input_format='csv',
+            output_format='markdown')
+
+    def testTsvOutput(self):
+        self.assertPol(
+            'records',
+            '''\
+            Bucks	Milwaukee	60	22	0.732\r
+            Raptors	Toronto	58	24	0.707\r
+            76ers	Philadelphia	51	31	0.622\r
+            Celtics	Boston	49	33	0.598\r
+            Pacers	Indiana	48	34	0.585\r
+            ''',
+            output_format='tsv')
+
+    def testMultilineInput(self):
+        self.assertPol(
+            textwrap.dedent('''\
+            record = 1
+            record + 1\
+            '''),
+            '''\
+            2
+            ''')
+
+    def testMultilineMixedInput(self):
+        self.assertPol(
+            textwrap.dedent('''\
+            record = 1; record += 1
+            record += 1; record + 1
+            '''),
+            '''\
+            4
+            ''')
+
+    def testLastStatement(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('1+1;pass')
+        self.assertEqual(
+            textwrap.dedent('''\
+            Cannot evaluate value from statement:
+              pass'''),
+            str(context.exception.__cause__))
+
+    def testMultilinePythonProgram(self):
+        self.assertPol(
+            textwrap.dedent('''\
+            result = []
+            for i in range(5):
+                result.append(range(i + 1))
+            result
+            '''),
+            '''\
+            0
+            0 1
+            0 1 2
+            0 1 2 3
+            0 1 2 3 4
+            ''')
+
+    def testMarkdownWrapping(self):
+        self.assertPol(
+            'df[["marketplace", "review_body", "star_rating"]]',
+            '''\
+            | marketplace | review_body                                                          | star_rating |
+            | ----------- | -------------------------------------------------------------------- | ----------- |
+            | US          | Absolutely love this watch! Get compliments almost every time I wear | 5           |
+            :             :  it. Dainty.                                                         :             :
+            | US          | I love this watch it keeps time wonderfully.                         | 5           |
+            | US          | Scratches                                                            | 2           |
+            | US          | It works well on me. However, I found cheaper prices in other places | 5           |
+            :             :  after making the purchase                                           :             :
+            | US          | Beautiful watch face.  The band looks nice all around.  The links do | 4           |
+            :             :  make that squeaky cheapo noise when you swing it back and forth on  :             :
+            :             : your wrist which can be embarrassing in front of watch enthusiasts.  :             :
+            :             :   However, to the naked eye from afar, you can't tell the links are  :             :
+            :             : cheap or folded because it is well polished and brushed and the      :             :
+            :             : folds are pretty tight for the most part.<br /><br />I love the new  :             :
+            :             : member of my collection and it looks great.  I've had it for about a :             :
+            :             :  week and so far it has kept good time despite day 1 which is        :             :
+            :             : typical of a new mechanical watch                                    :             :
+            ''',
+            data='data_amazon_reviews.tsv',
+            input_format='tsv',
+            output_format='markdown')
+
+    # Support windows
