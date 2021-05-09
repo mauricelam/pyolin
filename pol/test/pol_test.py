@@ -6,6 +6,7 @@ import sys
 import textwrap
 import traceback
 import unittest
+from unittest import mock
 from .utils import *
 
 
@@ -15,10 +16,7 @@ def _test_file(file):
 
 def run_pol(prog, *, data='data_nba.txt', **extra_args):
     with run_capturing_output(errmsg=f'Prog: {prog}') as output:
-        pol.pol(
-            prog,
-            _test_file(data),
-            **extra_args)
+        pol.pol(prog, _test_file(data), **extra_args)
         return output.getvalue()
 
 
@@ -38,72 +36,95 @@ def polPopen(prog, extra_args=[], **kwargs):
 class PolTest(unittest.TestCase):
 
     maxDiff = None
+    longMessage = False
 
-    def assertPol(
-            self, prog, expected_output, *, data='data_nba.txt', **kwargs):
+    def assertPol(self, prog, expected_output, *, data='data_nba.txt', repr=False, **kwargs):
+        actual = run_pol(prog, data=data, **kwargs)
+        expected = textwrap.dedent(expected_output)
         self.assertEqual(
-            run_pol(prog, data=data, **kwargs),
-            textwrap.dedent(expected_output),
-            msg=f'Prog: pol \'{prog}\' {_test_file(data)}')
+            actual,
+            expected,
+            msg=f'''\
+Prog: pol \'{prog}\' {_test_file(data)}
+Expected:
+{textwrap.indent(expected, '    ')}
+---
+
+Actual:
+{textwrap.indent(actual, '    ')}
+---
+''')
 
     def testLines(self):
         self.assertPol(
             'line for line in lines',
             '''\
-            Bucks Milwaukee    60 22 0.732
-            Raptors Toronto    58 24 0.707
-            76ers Philadelphia 51 31 0.622
-            Celtics Boston     49 33 0.598
-            Pacers Indiana     48 34 0.585
+            | value                          |
+            | ------------------------------ |
+            | Bucks Milwaukee    60 22 0.732 |
+            | Raptors Toronto    58 24 0.707 |
+            | 76ers Philadelphia 51 31 0.622 |
+            | Celtics Boston     49 33 0.598 |
+            | Pacers Indiana     48 34 0.585 |
             ''')
 
     def testLine(self):
         self.assertPol(
             'line',
             '''\
-            Bucks Milwaukee    60 22 0.732
-            Raptors Toronto    58 24 0.707
-            76ers Philadelphia 51 31 0.622
-            Celtics Boston     49 33 0.598
-            Pacers Indiana     48 34 0.585
+            | value                          |
+            | ------------------------------ |
+            | Bucks Milwaukee    60 22 0.732 |
+            | Raptors Toronto    58 24 0.707 |
+            | 76ers Philadelphia 51 31 0.622 |
+            | Celtics Boston     49 33 0.598 |
+            | Pacers Indiana     48 34 0.585 |
             ''')
 
     def testFields(self):
         self.assertPol(
             'fields',
             '''\
-            Bucks Milwaukee 60 22 0.732
-            Raptors Toronto 58 24 0.707
-            76ers Philadelphia 51 31 0.622
-            Celtics Boston 49 33 0.598
-            Pacers Indiana 48 34 0.585
+            | 0       | 1            | 2  | 3  | 4     |
+            | ------- | ------------ | -- | -- | ----- |
+            | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
+            | Raptors | Toronto      | 58 | 24 | 0.707 |
+            | 76ers   | Philadelphia | 51 | 31 | 0.622 |
+            | Celtics | Boston       | 49 | 33 | 0.598 |
+            | Pacers  | Indiana      | 48 | 34 | 0.585 |
             ''')
 
     def testReorderFields(self):
         self.assertPol(
             'fields[1], fields[0]',
             '''\
-            Milwaukee Bucks
-            Toronto Raptors
-            Philadelphia 76ers
-            Boston Celtics
-            Indiana Pacers
+            | 0            | 1       |
+            | ------------ | ------- |
+            | Milwaukee    | Bucks   |
+            | Toronto      | Raptors |
+            | Philadelphia | 76ers   |
+            | Boston       | Celtics |
+            | Indiana      | Pacers  |
             ''')
 
     def testConditional(self):
         self.assertPol(
             'record for record in records if record[1] == "Boston"',
             '''\
-            Celtics Boston 49 33 0.598
+            | 0       | 1      | 2  | 3  | 4     |
+            | ------- | ------ | -- | -- | ----- |
+            | Celtics | Boston | 49 | 33 | 0.598 |
             ''')
 
     def testNumberConversion(self):
         self.assertPol(
             'record.str for record in records if record[2] > 50',
             '''\
-            Bucks Milwaukee    60 22 0.732
-            Raptors Toronto    58 24 0.707
-            76ers Philadelphia 51 31 0.622
+            | value                          |
+            | ------------------------------ |
+            | Bucks Milwaukee    60 22 0.732 |
+            | Raptors Toronto    58 24 0.707 |
+            | 76ers Philadelphia 51 31 0.622 |
             ''')
 
     def testExpressionRecord(self):
@@ -113,35 +134,41 @@ class PolTest(unittest.TestCase):
             5
             ''')
 
-    def testImplicitIteration(self):
+    def testIfExpression(self):
         self.assertPol(
             'fields[0] if fields[3] > 30',
             '''\
-            76ers
-            Celtics
-            Pacers
+            | value   |
+            | ------- |
+            | 76ers   |
+            | Celtics |
+            | Pacers  |
             ''')
 
     def testTernaryExplicit(self):
         self.assertPol(
             'r[1] if len(r[1]) > 8 else "Name too short" for r in records',
             '''\
-            Milwaukee
-            Name too short
-            Philadelphia
-            Name too short
-            Name too short
+            | value          |
+            | -------------- |
+            | Milwaukee      |
+            | Name too short |
+            | Philadelphia   |
+            | Name too short |
+            | Name too short |
             ''')
 
     def testTernaryImplicit(self):
         self.assertPol(
             'fields[1] if fields[2] > 50 else "Score too low"',
             '''\
-            Milwaukee
-            Toronto
-            Philadelphia
-            Score too low
-            Score too low
+            | value         |
+            | ------------- |
+            | Milwaukee     |
+            | Toronto       |
+            | Philadelphia  |
+            | Score too low |
+            | Score too low |
             ''')
 
     def testCountCondition(self):
@@ -155,20 +182,25 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             '(i, line) for i, line in enumerate(lines)',
             '''\
-            0 Bucks Milwaukee    60 22 0.732
-            1 Raptors Toronto    58 24 0.707
-            2 76ers Philadelphia 51 31 0.622
-            3 Celtics Boston     49 33 0.598
-            4 Pacers Indiana     48 34 0.585
+            | 0 | 1                              |
+            | - | ------------------------------ |
+            | 0 | Bucks Milwaukee    60 22 0.732 |
+            | 1 | Raptors Toronto    58 24 0.707 |
+            | 2 | 76ers Philadelphia 51 31 0.622 |
+            | 3 | Celtics Boston     49 33 0.598 |
+            | 4 | Pacers Indiana     48 34 0.585 |
             ''')
 
     def testSkipNone(self):
         self.assertPol(
             '[None, 1, 2, 3]',
             '''\
-            1
-            2
-            3
+            | value |
+            | ----- |
+            | None  |
+            | 1     |
+            | 2     |
+            | 3     |
             ''')
 
     def testSingletonNone(self):
@@ -185,174 +217,207 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             r'fields if re.match(r"^\d.*", fields[0])',
             '''\
-            76ers Philadelphia 51 31 0.622
+            | 0     | 1            | 2  | 3  | 4     |
+            | ----- | ------------ | -- | -- | ----- |
+            | 76ers | Philadelphia | 51 | 31 | 0.622 |
             ''')
 
     def testAddition(self):
         self.assertPol(
             'fields[2] + 100',
             '''\
-            160
-            158
-            151
-            149
-            148
+            | value |
+            | ----- |
+            | 160   |
+            | 158   |
+            | 151   |
+            | 149   |
+            | 148   |
             ''')
 
     def testRadd(self):
         self.assertPol(
             '100 + fields[2]',
             '''\
-            160
-            158
-            151
-            149
-            148
+            | value |
+            | ----- |
+            | 160   |
+            | 158   |
+            | 151   |
+            | 149   |
+            | 148   |
             ''')
 
     def testFieldAddition(self):
         self.assertPol(
             'fields[2] + fields[3]',
             '''\
-            82
-            82
-            82
-            82
-            82
+            | value |
+            | ----- |
+            | 82    |
+            | 82    |
+            | 82    |
+            | 82    |
+            | 82    |
             ''')
 
     def testFieldConcat(self):
         self.assertPol(
             'fields[2] + fields[0]',
             '''\
-            60Bucks
-            58Raptors
-            5176ers
-            49Celtics
-            48Pacers
+            | value     |
+            | --------- |
+            | 60Bucks   |
+            | 58Raptors |
+            | 5176ers   |
+            | 49Celtics |
+            | 48Pacers  |
             ''')
 
     def testFieldConcatReversed(self):
         self.assertPol(
             'fields[0] + fields[2]',
             '''\
-            Bucks60
-            Raptors58
-            76ers51
-            Celtics49
-            Pacers48
+            | value     |
+            | --------- |
+            | Bucks60   |
+            | Raptors58 |
+            | 76ers51   |
+            | Celtics49 |
+            | Pacers48  |
             ''')
 
     def testStringConcat(self):
         self.assertPol(
             'fields[0] + "++"',
             '''\
-            Bucks++
-            Raptors++
-            76ers++
-            Celtics++
-            Pacers++
+            | value     |
+            | --------- |
+            | Bucks++   |
+            | Raptors++ |
+            | 76ers++   |
+            | Celtics++ |
+            | Pacers++  |
             ''')
 
     def testLt(self):
         self.assertPol(
             'fields[0] if fields[2] < 51',
             '''\
-            Celtics
-            Pacers
+            | value   |
+            | ------- |
+            | Celtics |
+            | Pacers  |
             ''')
 
     def testLe(self):
         self.assertPol(
             'fields[0] if fields[2] <= 51',
             '''\
-            76ers
-            Celtics
-            Pacers
+            | value   |
+            | ------- |
+            | 76ers   |
+            | Celtics |
+            | Pacers  |
             ''')
 
     def testSubtraction(self):
         self.assertPol(
             'fields[2] - 50',
             '''\
-            10
-            8
-            1
-            -1
-            -2
+            | value |
+            | ----- |
+            | 10    |
+            | 8     |
+            | 1     |
+            | -1    |
+            | -2    |
             ''')
 
     def testRsub(self):
         self.assertPol(
             '50 - fields[2]',
             '''\
-            -10
-            -8
-            -1
-            1
-            2
+            | value |
+            | ----- |
+            | -10   |
+            | -8    |
+            | -1    |
+            | 1     |
+            | 2     |
             ''')
 
     def testLeftShift(self):
         self.assertPol(
             'fields[2] << 2',
             '''\
-            240
-            232
-            204
-            196
-            192
+            | value |
+            | ----- |
+            | 240   |
+            | 232   |
+            | 204   |
+            | 196   |
+            | 192   |
             ''')
 
     def testNeg(self):
         self.assertPol(
             '(-fields[2])',
             '''\
-            -60
-            -58
-            -51
-            -49
-            -48
+            | value |
+            | ----- |
+            | -60   |
+            | -58   |
+            | -51   |
+            | -49   |
+            | -48   |
             ''')
 
     def testRound(self):
         self.assertPol(
             'round(fields[2], -2)',
             '''\
-            100
-            100
-            100
-            0
-            0
+            | value |
+            | ----- |
+            | 100   |
+            | 100   |
+            | 100   |
+            | 0     |
+            | 0     |
             ''')
 
     def testSkipFirstLine(self):
         self.assertPol(
             'l for l in lines[1:]',
             '''\
-            Raptors Toronto    58 24 0.707
-            76ers Philadelphia 51 31 0.622
-            Celtics Boston     49 33 0.598
-            Pacers Indiana     48 34 0.585
+            | value                          |
+            | ------------------------------ |
+            | Raptors Toronto    58 24 0.707 |
+            | 76ers Philadelphia 51 31 0.622 |
+            | Celtics Boston     49 33 0.598 |
+            | Pacers Indiana     48 34 0.585 |
             ''')
 
     def testAnd(self):
         self.assertPol(
             'record if fields[2] > 50 and fields[3] > 30',
             '''\
-            76ers Philadelphia 51 31 0.622
+            | 0     | 1            | 2  | 3  | 4     |
+            | ----- | ------------ | -- | -- | ----- |
+            | 76ers | Philadelphia | 51 | 31 | 0.622 |
             ''')
 
     def testAddHeader(self):
         self.assertPol(
-            '[("Team", "City", "Win", "Loss", "Winrate")] + records',
+            'header = ("Team", "City", "Win", "Loss", "Winrate"); records',
             '''\
-            Team City Win Loss Winrate
-            Bucks Milwaukee 60 22 0.732
-            Raptors Toronto 58 24 0.707
-            76ers Philadelphia 51 31 0.622
-            Celtics Boston 49 33 0.598
-            Pacers Indiana 48 34 0.585
+            | Team    | City         | Win | Loss | Winrate |
+            | ------- | ------------ | --- | ---- | ------- |
+            | Bucks   | Milwaukee    | 60  | 22   | 0.732   |
+            | Raptors | Toronto      | 58  | 24   | 0.707   |
+            | 76ers   | Philadelphia | 51  | 31   | 0.622   |
+            | Celtics | Boston       | 49  | 33   | 0.598   |
+            | Pacers  | Indiana      | 48  | 34   | 0.585   |
             ''')
 
     def testCountDots(self):
@@ -376,8 +441,14 @@ class PolTest(unittest.TestCase):
             154
             ''')
 
+    def testEmptyList(self):
+        self.assertPol(
+            '[]',
+            '''\
+            ''')
+
     def testStreamingStdin(self):
-        with polPopen('line') as proc:
+        with polPopen('line', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.flush()
             with timeout(2):
@@ -392,7 +463,8 @@ class PolTest(unittest.TestCase):
                     'Celtics Boston     49 33 0.598\n')
 
     def testStreamingSlice(self):
-        with polPopen('records[:2]') as proc:
+        with polPopen(
+                'records[:2]', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.write('Celtics Boston     49 33 0.598\n')
             proc.stdin.flush()
@@ -406,7 +478,8 @@ class PolTest(unittest.TestCase):
             proc.stdin.write('Write more stuff...\n')
 
     def testStreamingIndex(self):
-        with polPopen('records[1].str') as proc:
+        with polPopen(
+                'records[1].str', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.write('Celtics Boston     49 33 0.598\n')
             proc.stdin.flush()
@@ -427,11 +500,13 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'city for team, city, _, _, _ in records',
             '''\
-            Milwaukee
-            Toronto
-            Philadelphia
-            Boston
-            Indiana
+            | value        |
+            | ------------ |
+            | Milwaukee    |
+            | Toronto      |
+            | Philadelphia |
+            | Boston       |
+            | Indiana      |
             ''')
 
     def testPercentage(self):
@@ -439,11 +514,13 @@ class PolTest(unittest.TestCase):
             '(r[0], round(r[3] / sum(r[3] for r in records), 2)) '
             'for r in records',
             '''\
-            Bucks 0.15
-            Raptors 0.17
-            76ers 0.22
-            Celtics 0.23
-            Pacers 0.24
+            | 0       | 1    |
+            | ------- | ---- |
+            | Bucks   | 0.15 |
+            | Raptors | 0.17 |
+            | 76ers   | 0.22 |
+            | Celtics | 0.23 |
+            | Pacers  | 0.24 |
             ''')
 
     def testSingletonTuple(self):
@@ -459,26 +536,29 @@ class PolTest(unittest.TestCase):
 
     def testModuleImport(self):
         self.assertPol(
-            'record[0] if fnmatch.fnmatch(record[0], "*.txt")',
+            'import fnmatch; record[0] if fnmatch.fnmatch(record[0], "*.txt")',
             '''\
-            dir/file.txt
-            dir/file1.txt
-            dir/fileb.txt
-            dir/subdir/subfile.txt
+            | value                  |
+            | ---------------------- |
+            | dir/file.txt           |
+            | dir/file1.txt          |
+            | dir/fileb.txt          |
+            | dir/subdir/subfile.txt |
             ''',
-            data='data_files.txt',
-            modules=('fnmatch',))
+            data='data_files.txt')
 
     def testRecordVariables(self):
         self.assertPol(
             'type(record).__name__, type(line).__name__, '
             'type(fields).__name__',
             '''\
-            Record str Record
-            Record str Record
-            Record str Record
-            Record str Record
-            Record str Record
+            | 0      | 1   | 2      |
+            | ------ | --- | ------ |
+            | Record | str | Record |
+            | Record | str | Record |
+            | Record | str | Record |
+            | Record | str | Record |
+            | Record | str | Record |
             ''')
 
     def testFileVariables(self):
@@ -486,15 +566,17 @@ class PolTest(unittest.TestCase):
             'type(lines).__name__, type(records).__name__, '
             'type(file).__name__, type(contents).__name__',
             '''\
-            LazySequence LazySequence str str
+            LazySequence RecordSequence str str
             ''')
 
     def testBoolean(self):
         self.assertPol(
-            'line if record[1].bool',
+            'record if record[1].bool',
             '''\
-            dir True 30 40.0
-            dir/subdir True 12 42.0
+            | 0          | 1    | 2  | 3    |
+            | ---------- | ---- | -- | ---- |
+            | dir        | True | 30 | 40.0 |
+            | dir/subdir | True | 12 | 42.0 |
             ''',
             data='data_files.txt')
 
@@ -517,11 +599,13 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'reversed(lines)',
             '''\
-            Pacers Indiana     48 34 0.585
-            Celtics Boston     49 33 0.598
-            76ers Philadelphia 51 31 0.622
-            Raptors Toronto    58 24 0.707
-            Bucks Milwaukee    60 22 0.732
+            | value                          |
+            | ------------------------------ |
+            | Pacers Indiana     48 34 0.585 |
+            | Celtics Boston     49 33 0.598 |
+            | 76ers Philadelphia 51 31 0.622 |
+            | Raptors Toronto    58 24 0.707 |
+            | Bucks Milwaukee    60 22 0.732 |
             ''')
 
     def testContains(self):
@@ -533,40 +617,44 @@ class PolTest(unittest.TestCase):
 
     def testBase64(self):
         self.assertPol(
-            'base64.b64encode(bytes(fields[0]))',
+            'import base64; base64.b64encode(fields[0].bytes)',
             '''\
-            QnVja3M=
-            UmFwdG9ycw==
-            NzZlcnM=
-            Q2VsdGljcw==
-            UGFjZXJz
-            ''',
-            modules=('base64',))
+            | value        |
+            | ------------ |
+            | QnVja3M=     |
+            | UmFwdG9ycw== |
+            | NzZlcnM=     |
+            | Q2VsdGljcw== |
+            | UGFjZXJz     |
+            ''')
 
     def testUrlQuote(self):
         self.assertPol(
-            'urllib.parse.quote(line)',
+            'import urllib; urllib.parse.quote(line)',
             '''\
-            Bucks%20Milwaukee%20%20%20%2060%2022%200.732
-            Raptors%20Toronto%20%20%20%2058%2024%200.707
-            76ers%20Philadelphia%2051%2031%200.622
-            Celtics%20Boston%20%20%20%20%2049%2033%200.598
-            Pacers%20Indiana%20%20%20%20%2048%2034%200.585
-            ''',
-            modules=('urllib',))
+            | value                                          |
+            | ---------------------------------------------- |
+            | Bucks%20Milwaukee%20%20%20%2060%2022%200.732   |
+            | Raptors%20Toronto%20%20%20%2058%2024%200.707   |
+            | 76ers%20Philadelphia%2051%2031%200.622         |
+            | Celtics%20Boston%20%20%20%20%2049%2033%200.598 |
+            | Pacers%20Indiana%20%20%20%20%2048%2034%200.585 |
+            ''')
 
     def testFieldsEqual(self):
         self.assertPol(
             'fields[2], fields[3], fields[2] == fields[3]',
             '''\
-            30 40.0 False
-            40 32.0 False
-            23 56.0 False
-            15 85.0 False
-            31 31.0 True
-            44 16.0 False
-            12 42.0 False
-            11 53.0 False
+            | 0  | 1    | 2     |
+            | -- | ---- | ----- |
+            | 30 | 40.0 | False |
+            | 40 | 32.0 | False |
+            | 23 | 56.0 | False |
+            | 15 | 85.0 | False |
+            | 31 | 31.0 | True  |
+            | 44 | 16.0 | False |
+            | 12 | 42.0 | False |
+            | 11 | 53.0 | False |
             ''',
             data='data_files.txt')
 
@@ -574,14 +662,16 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'fields[2], fields[3], fields[2] >= fields[3]',
             '''\
-            30 40.0 False
-            40 32.0 True
-            23 56.0 False
-            15 85.0 False
-            31 31.0 True
-            44 16.0 True
-            12 42.0 False
-            11 53.0 False
+            | 0  | 1    | 2     |
+            | -- | ---- | ----- |
+            | 30 | 40.0 | False |
+            | 40 | 32.0 | True  |
+            | 23 | 56.0 | False |
+            | 15 | 85.0 | False |
+            | 31 | 31.0 | True  |
+            | 44 | 16.0 | True  |
+            | 12 | 42.0 | False |
+            | 11 | 53.0 | False |
             ''',
             data='data_files.txt')
 
@@ -589,90 +679,106 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'fields[3] * 10',
             '''\
-            220
-            240
-            310
-            330
-            340
+            | value |
+            | ----- |
+            | 220   |
+            | 240   |
+            | 310   |
+            | 330   |
+            | 340   |
             ''')
 
     def testFieldsMultiplication(self):
         self.assertPol(
             'fields[3] * fields[2]',
             '''\
-            1320
-            1392
-            1581
-            1617
-            1632
+            | value |
+            | ----- |
+            | 1320  |
+            | 1392  |
+            | 1581  |
+            | 1617  |
+            | 1632  |
             ''')
 
     def testStringMultiplication(self):
         self.assertPol(
             'fields[0] * 2',
             '''\
-            BucksBucks
-            RaptorsRaptors
-            76ers76ers
-            CelticsCeltics
-            PacersPacers
+            | value          |
+            | -------------- |
+            | BucksBucks     |
+            | RaptorsRaptors |
+            | 76ers76ers     |
+            | CelticsCeltics |
+            | PacersPacers   |
             ''')
 
     def testPandasDataframe(self):
         self.assertPol(
             'df',
             '''\
-            Bucks Milwaukee 60 22 0.732
-            Raptors Toronto 58 24 0.707
-            76ers Philadelphia 51 31 0.622
-            Celtics Boston 49 33 0.598
-            Pacers Indiana 48 34 0.585
+            | 0       | 1            | 2  | 3  | 4     |
+            | ------- | ------------ | -- | -- | ----- |
+            | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
+            | Raptors | Toronto      | 58 | 24 | 0.707 |
+            | 76ers   | Philadelphia | 51 | 31 | 0.622 |
+            | Celtics | Boston       | 49 | 33 | 0.598 |
+            | Pacers  | Indiana      | 48 | 34 | 0.585 |
             ''')
 
     def testPandasDtypes(self):
         self.assertPol(
             'df.dtypes',
             '''\
-            object
-            object
-            int64
-            int64
-            float64
+            | value   |
+            | ------- |
+            | object  |
+            | object  |
+            | int64   |
+            | int64   |
+            | float64 |
             ''')
 
     def testPandaNumericOperations(self):
         self.assertPol(
             'df[2] * 2',
             '''\
-            120
-            116
-            102
-            98
-            96
+            | value |
+            | ----- |
+            | 120   |
+            | 116   |
+            | 102   |
+            | 98    |
+            | 96    |
             ''')
 
     def testNumpyNumericOperations(self):
         self.assertPol(
             'np.power(df[2], 2)',
             '''\
-            3600
-            3364
-            2601
-            2401
-            2304
+            | value |
+            | ----- |
+            | 3600  |
+            | 3364  |
+            | 2601  |
+            | 2401  |
+            | 2304  |
             ''')
 
     def testFieldSeparator(self):
         self.assertPol(
             'record',
             '''\
-            Alfalfa Aloysius 123-45-6789 40.0 90.0 100.0 83.0 49.0 D-
-            Alfred University 123-12-1234 41.0 97.0 96.0 97.0 48.0 D+
-            Gerty Gramma 567-89-0123 41.0 80.0 60.0 40.0 44.0 C
-            Android Electric 087-65-4321 42.0 23.0 36.0 45.0 47.0 B-
-            Franklin Benny 234-56-2890 50.0 1.0 90.0 80.0 90.0 B-
-            George Boy 345-67-3901 40.0 1.0 11.0 -1.0 4.0 B
-            Heffalump Harvey 632-79-9439 30.0 1.0 20.0 30.0 40.0 C
+            | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
+            | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
+            | Alfalfa   | Aloysius   | 123-45-6789 | 40.0 | 90.0 | 100.0 | 83.0 | 49.0 | D- |
+            | Alfred    | University | 123-12-1234 | 41.0 | 97.0 | 96.0  | 97.0 | 48.0 | D+ |
+            | Gerty     | Gramma     | 567-89-0123 | 41.0 | 80.0 | 60.0  | 40.0 | 44.0 | C  |
+            | Android   | Electric   | 087-65-4321 | 42.0 | 23.0 | 36.0  | 45.0 | 47.0 | B- |
+            | Franklin  | Benny      | 234-56-2890 | 50.0 | 1.0  | 90.0  | 80.0 | 90.0 | B- |
+            | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
+            | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
             ''',
             data='data_grades_simple_csv.csv',
             field_separator=r',')
@@ -681,14 +787,16 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'record',
             '''\
-            Alfalfa Aloysius 123-45-6789 40 0 90 0 100 0 83 0 49 0 D-
-            Alfred University 123-12-1234 41 0 97 0 96 0 97 0 48 0 D+
-            Gerty Gramma 567-89-0123 41 0 80 0 60 0 40 0 44 0 C
-            Android Electric 087-65-4321 42 0 23 0 36 0 45 0 47 0 B-
-            Franklin Benny 234-56-2890 50 0 1 0 90 0 80 0 90 0 B-
-            George Boy 345-67-3901 40 0 1 0 11 0 -1 0 4 0 B
-            Heffalump Harvey 632-79-9439 30 0 1 0 20 0 30 0 40 0 C
-            ''',
+    | 0         | 1          | 2           | 3  | 4 | 5  | 6 | 7   | 8 | 9  | 10 | 11 | 12 | 13 |
+    | --------- | ---------- | ----------- | -- | - | -- | - | --- | - | -- | -- | -- | -- | -- |
+    | Alfalfa   | Aloysius   | 123-45-6789 | 40 | 0 | 90 | 0 | 100 | 0 | 83 | 0  | 49 | 0  | D- |
+    | Alfred    | University | 123-12-1234 | 41 | 0 | 97 | 0 | 96  | 0 | 97 | 0  | 48 | 0  | D+ |
+    | Gerty     | Gramma     | 567-89-0123 | 41 | 0 | 80 | 0 | 60  | 0 | 40 | 0  | 44 | 0  | C  |
+    | Android   | Electric   | 087-65-4321 | 42 | 0 | 23 | 0 | 36  | 0 | 45 | 0  | 47 | 0  | B- |
+    | Franklin  | Benny      | 234-56-2890 | 50 | 0 | 1  | 0 | 90  | 0 | 80 | 0  | 90 | 0  | B- |
+    | George    | Boy        | 345-67-3901 | 40 | 0 | 1  | 0 | 11  | 0 | -1 | 0  | 4  | 0  | B  |
+    | Heffalump | Harvey     | 632-79-9439 | 30 | 0 | 1  | 0 | 20  | 0 | 30 | 0  | 40 | 0  | C  |
+    ''',
             data='data_grades_simple_csv.csv',
             field_separator=r'[\.,]')
 
@@ -696,20 +804,22 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'record',
             '''\
-            JET
-            20031201
-            20001006
-            53521
-            1.000E+01
-            NBIC
-            HSELM
-            TRANS
-            2.000E+00
-            1.000E+00
-            2
-            1
-            0
-            0
+            | value     |
+            | --------- |
+            | JET       |
+            | 20031201  |
+            | 20001006  |
+            | 53521     |
+            | 1.000E+01 |
+            | NBIC      |
+            | HSELM     |
+            | TRANS     |
+            | 2.000E+00 |
+            | 1.000E+00 |
+            | 2         |
+            | 1         |
+            | 0         |
+            | 0         |
             ''',
             data='data_onerow.csv',
             record_separator=r',')
@@ -718,11 +828,13 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'record',
             '''\
-            JET
-            0031201
-            0001006,53521,1.000E+01,NBIC,HSELM,TRANS
-            .000E+00,1.000E+00
-            ,1,0,0
+            | value                                    |
+            | ---------------------------------------- |
+            | JET                                      |
+            | 0031201                                  |
+            | 0001006,53521,1.000E+01,NBIC,HSELM,TRANS |
+            | .000E+00,1.000E+00                       |
+            | ,1,0,0                                   |
             ''',
             data='data_onerow.csv',
             record_separator=r',2')
@@ -731,23 +843,25 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'record',
             '''\
-            JET
-            20031201
-            20001006
-            53521
-            1
-            000E+01
-            NBIC
-            HSELM
-            TRANS
-            2
-            000E+00
-            1
-            000E+00
-            2
-            1
-            0
-            0
+            | value    |
+            | -------- |
+            | JET      |
+            | 20031201 |
+            | 20001006 |
+            | 53521    |
+            | 1        |
+            | 000E+01  |
+            | NBIC     |
+            | HSELM    |
+            | TRANS    |
+            | 2        |
+            | 000E+00  |
+            | 1        |
+            | 000E+00  |
+            | 2        |
+            | 1        |
+            | 0        |
+            | 0        |
             ''',
             data='data_onerow.csv',
             record_separator=r'[,.]')
@@ -756,13 +870,15 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[[0, 1, 2]]',
             '''\
-            Alfalfa Aloysius 123-45-6789
-            Alfred University 123-12-1234
-            Gerty Gramma 567-89-0123
-            Android Electric 087-65-4321
-            Franklin Benny 234-56-2890
-            George Boy 345-67-3901
-            Heffalump Harvey 632-79-9439
+            | 0         | 1          | 2           |
+            | --------- | ---------- | ----------- |
+            | Alfalfa   | Aloysius   | 123-45-6789 |
+            | Alfred    | University | 123-12-1234 |
+            | Gerty     | Gramma     | 567-89-0123 |
+            | Android   | Electric   | 087-65-4321 |
+            | Franklin  | Benny      | 234-56-2890 |
+            | George    | Boy        | 345-67-3901 |
+            | Heffalump | Harvey     | 632-79-9439 |
             ''',
             data='data_grades_simple_csv.csv',
             input_format='csv')
@@ -771,12 +887,14 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'record[0]',
             '''\
-            60 Minutes
-            48 Hours Mystery
-            20/20
-            Nightline
-            Dateline Friday
-            Dateline Sunday
+            | value            |
+            | ---------------- |
+            | 60 Minutes       |
+            | 48 Hours Mystery |
+            | 20/20            |
+            | Nightline        |
+            | Dateline Friday  |
+            | Dateline Sunday  |
             ''',
             data='data_news_decline.csv',
             input_format='csv')
@@ -785,12 +903,14 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'record.str',
             '''\
-            "60 Minutes",       7.6, 7.4, 7.3
-            "48 Hours Mystery", 4.1, 3.9, 3.6
-            "20/20",            4.1, 3.7, 3.3
-            "Nightline",        2.7, 2.6, 2.7
-            "Dateline Friday",  4.1, 4.1, 3.9
-            "Dateline Sunday",  3.5, 3.2, 3.1
+            | value                             |
+            | --------------------------------- |
+            | "60 Minutes",       7.6, 7.4, 7.3 |
+            | "48 Hours Mystery", 4.1, 3.9, 3.6 |
+            | "20/20",            4.1, 3.7, 3.3 |
+            | "Nightline",        2.7, 2.6, 2.7 |
+            | "Dateline Friday",  4.1, 4.1, 3.9 |
+            | "Dateline Sunday",  3.5, 3.2, 3.1 |
             ''',
             data='data_news_decline.csv',
             input_format='csv')
@@ -799,12 +919,14 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[[0,1,2]]',
             '''\
-            John Doe 120 jefferson st.
-            Jack McGinnis 220 hobo Av.
-            John "Da Man" Repici 120 Jefferson St.
-            Stephen Tyler 7452 Terrace "At the Plaza" road
-             Blankman 
-            Joan "the bone", Anne Jet 9th, at Terrace plc
+            | 0                     | 1        | 2                                |
+            | --------------------- | -------- | -------------------------------- |
+            | John                  | Doe      | 120 jefferson st.                |
+            | Jack                  | McGinnis | 220 hobo Av.                     |
+            | John "Da Man"         | Repici   | 120 Jefferson St.                |
+            | Stephen               | Tyler    | 7452 Terrace "At the Plaza" road |
+            |                       | Blankman |                                  |
+            | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
             ''',
             data='data_addresses.csv',
             input_format='csv')
@@ -813,12 +935,14 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[[0,1,2]]',
             '''\
-            John Doe 120 jefferson st.
-            Jack McGinnis 220 hobo Av.
-            John "Da Man" Repici 120 Jefferson St.
-            Stephen Tyler 7452 Terrace "At the Plaza" road
-             Blankman 
-            Joan "the bone", Anne Jet 9th, at Terrace plc
+            | 0                     | 1        | 2                                |
+            | --------------------- | -------- | -------------------------------- |
+            | John                  | Doe      | 120 jefferson st.                |
+            | Jack                  | McGinnis | 220 hobo Av.                     |
+            | John "Da Man"         | Repici   | 120 Jefferson St.                |
+            | Stephen               | Tyler    | 7452 Terrace "At the Plaza" road |
+            |                       | Blankman |                                  |
+            | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
             ''',
             data='data_addresses.csv',
             input_format='csv_excel')
@@ -827,12 +951,14 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             '"|".join((record[0], record[1], record[2]))',
             '''\
-            John|Doe|120 jefferson st.
-            Jack|McGinnis|220 hobo Av.
-            John "Da Man"|Repici|120 Jefferson St.
-            Stephen|Tyler|7452 Terrace "At the Plaza" road
-            |Blankman|
-            Joan "the bone", Anne|Jet|9th, at Terrace plc
+            | value                                          |
+            | ---------------------------------------------- |
+            | John|Doe|120 jefferson st.                     |
+            | Jack|McGinnis|220 hobo Av.                     |
+            | John "Da Man"|Repici|120 Jefferson St.         |
+            | Stephen|Tyler|7452 Terrace "At the Plaza" road |
+            | |Blankman|                                     |
+            | Joan "the bone", Anne|Jet|9th, at Terrace plc  |
             ''',
             data='data_addresses_unix.csv',
             input_format='csv')
@@ -841,12 +967,14 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'record[0], record[2]',
             '''\
-            60 Minutes 7.4
-            48 Hours Mystery 3.9
-            20/20 3.7
-            Nightline 2.6
-            Dateline Friday 4.1
-            Dateline Sunday 3.2
+            | 0                | 1   |
+            | ---------------- | --- |
+            | 60 Minutes       | 7.4 |
+            | 48 Hours Mystery | 3.9 |
+            | 20/20            | 3.7 |
+            | Nightline        | 2.6 |
+            | Dateline Friday  | 4.1 |
+            | Dateline Sunday  | 3.2 |
             ''',
             data='data_news_decline.tsv',
             input_format='csv',
@@ -856,11 +984,13 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'a = record[2]; b = 1; a + b',
             '''\
-            61
-            59
-            52
-            50
-            49
+            | value |
+            | ----- |
+            | 61    |
+            | 59    |
+            | 52    |
+            | 50    |
+            | 49    |
             ''')
 
     def testStatementTable(self):
@@ -894,13 +1024,15 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'df[["Last name", "SSN", "Final"]]',
             '''\
-            Alfalfa 123-45-6789 49
-            Alfred 123-12-1234 48
-            Gerty 567-89-0123 44
-            Android 087-65-4321 47
-            Franklin 234-56-2890 90
-            George 345-67-3901 4
-            Heffalump 632-79-9439 40
+            | Last name | SSN         | Final |
+            | --------- | ----------- | ----- |
+            | Alfalfa   | 123-45-6789 | 49    |
+            | Alfred    | 123-12-1234 | 48    |
+            | Gerty     | 567-89-0123 | 44    |
+            | Android   | 087-65-4321 | 47    |
+            | Franklin  | 234-56-2890 | 90    |
+            | George    | 345-67-3901 | 4     |
+            | Heffalump | 632-79-9439 | 40    |
             ''',
             data='data_grades_with_header.csv',
             input_format='csv')
@@ -909,15 +1041,17 @@ class PolTest(unittest.TestCase):
         self.assertPol(
             'list(df.columns.values)',
             '''\
-            Last name
-            First name
-            SSN
-            Test1
-            Test2
-            Test3
-            Test4
-            Final
-            Grade
+            | value      |
+            | ---------- |
+            | Last name  |
+            | First name |
+            | SSN        |
+            | Test1      |
+            | Test2      |
+            | Test3      |
+            | Test4      |
+            | Final      |
+            | Grade      |
             ''',
             data='data_grades_with_header.csv',
             input_format='csv')
@@ -965,9 +1099,9 @@ class PolTest(unittest.TestCase):
 
     def testStackTraceCleaning(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('urllib.parse.quote(12345)', modules=('urllib',))
+            run_pol('import urllib; urllib.parse.quote(12345)')
         formatted = context.exception.__cause__.formatted_tb()
-        self.assertEqual(5, len(formatted))
+        self.assertEqual(5, len(formatted), formatted)
         self.assertTrue('Traceback (most recent call last)' in formatted[0])
         self.assertTrue('pol_user_prog.py' in formatted[1])
         self.assertTrue('return quote_from_bytes' in formatted[2])
@@ -990,6 +1124,18 @@ class PolTest(unittest.TestCase):
             76ers,Philadelphia,51,31,0.622\r
             Celtics,Boston,49,33,0.598\r
             Pacers,Indiana,48,34,0.585\r
+            ''',
+            output_format='csv')
+
+    def testCsvOutputFormatUnix(self):
+        self.assertPol(
+            'printer.dialect = "unix"; records',
+            '''\
+            "Bucks","Milwaukee","60","22","0.732"
+            "Raptors","Toronto","58","24","0.707"
+            "76ers","Philadelphia","51","31","0.622"
+            "Celtics","Boston","49","33","0.598"
+            "Pacers","Indiana","48","34","0.585"
             ''',
             output_format='csv')
 
@@ -1022,7 +1168,7 @@ class PolTest(unittest.TestCase):
 
     def testCsvOutputWithHeader(self):
         self.assertPol(
-            'df[["Last name", "SSN", "Final"]]',
+            'printer.header = True; df[["Last name", "SSN", "Final"]]',
             '''\
             Last name,SSN,Final\r
             Alfalfa,123-45-6789,49\r
@@ -1035,7 +1181,7 @@ class PolTest(unittest.TestCase):
             ''',
             data='data_grades_with_header.csv',
             input_format='csv',
-            output_format='csv_header')
+            output_format='csv')
 
     def testStreamingStdinCsv(self):
         with polPopen('record', ['--output_format', 'csv']) as proc:
@@ -1054,7 +1200,7 @@ class PolTest(unittest.TestCase):
 
     def testNumericHeader(self):
         self.assertPol(
-            'record[0],record[2],record[7]',
+            'printer.header = True; record[0],record[2],record[7]',
             '''\
             0,1,2\r
             Alfalfa,123-45-6789,49.0\r
@@ -1067,7 +1213,7 @@ class PolTest(unittest.TestCase):
             ''',
             data='data_grades_simple_csv.csv',
             input_format='csv',
-            output_format='csv_header')
+            output_format='csv')
 
     def testMarkdownOutput(self):
         self.assertPol(
@@ -1142,32 +1288,196 @@ class PolTest(unittest.TestCase):
             0 1 2
             0 1 2 3
             0 1 2 3 4
-            ''')
+            ''',
+            output_format='awk')
 
     def testMarkdownWrapping(self):
+        with mock.patch.dict(os.environ, {'POL_TABLE_WIDTH': '80'}):
+            self.assertPol(
+                'df[["marketplace", "review_body", "star_rating"]]',
+                '''\
+                | marketplace | review_body                                      | star_rating |
+                | ----------- | ------------------------------------------------ | ----------- |
+                | US          | Absolutely love this watch! Get compliments      | 5           |
+                :             : almost every time I wear it. Dainty.             :             :
+                | US          | I love this watch it keeps time wonderfully.     | 5           |
+                | US          | Scratches                                        | 2           |
+                | US          | It works well on me. However, I found cheaper    | 5           |
+                :             : prices in other places after making the purchase :             :
+                | US          | Beautiful watch face.  The band looks nice all   | 4           |
+                :             : around.  The links do make that squeaky cheapo   :             :
+                :             : noise when you swing it back and forth on your   :             :
+                :             : wrist which can be embarrassing in front of      :             :
+                :             : watch enthusiasts.  However, to the naked eye    :             :
+                :             : from afar, you can't tell the links are cheap or :             :
+                :             :  folded because it is well polished and brushed  :             :
+                :             : and the folds are pretty tight for the most      :             :
+                :             : part.<br /><br />I love the new member of my     :             :
+                :             : collection and it looks great.  I've had it for  :             :
+                :             : about a week and so far it has kept good time    :             :
+                :             : despite day 1 which is typical of a new          :             :
+                :             : mechanical watch                                 :             :
+                ''',
+                data='data_amazon_reviews.tsv',
+                input_format='tsv',
+                output_format='markdown')
+
+    def testMarkdownWrapping2(self):
+        with mock.patch.dict(os.environ, {'POL_TABLE_WIDTH': '80'}):
+            self.assertPol(
+                'records',
+                '''\
+                | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11    | 12           | 13  | 14 |
+                | - | - | - | - | - | - | - | - | - | - | -- | ----- | ------------ | --- | -- |
+                | a | b | c | d | e | f | g | h | i | j | k  | lmnop | qrstuv123456 | wxy | z  |
+                :   :   :   :   :   :   :   :   :   :   :    :       : 789123456789 :     :    :
+                :   :   :   :   :   :   :   :   :   :   :    :       : 123456789    :     :    :
+                ''',
+                data='data_formatting.txt',
+                output_format='markdown')
+
+    def testJsonOutput(self):
         self.assertPol(
-            'df[["marketplace", "review_body", "star_rating"]]',
+            'records',
             '''\
-            | marketplace | review_body                                                          | star_rating |
-            | ----------- | -------------------------------------------------------------------- | ----------- |
-            | US          | Absolutely love this watch! Get compliments almost every time I wear | 5           |
-            :             :  it. Dainty.                                                         :             :
-            | US          | I love this watch it keeps time wonderfully.                         | 5           |
-            | US          | Scratches                                                            | 2           |
-            | US          | It works well on me. However, I found cheaper prices in other places | 5           |
-            :             :  after making the purchase                                           :             :
-            | US          | Beautiful watch face.  The band looks nice all around.  The links do | 4           |
-            :             :  make that squeaky cheapo noise when you swing it back and forth on  :             :
-            :             : your wrist which can be embarrassing in front of watch enthusiasts.  :             :
-            :             :   However, to the naked eye from afar, you can't tell the links are  :             :
-            :             : cheap or folded because it is well polished and brushed and the      :             :
-            :             : folds are pretty tight for the most part.<br /><br />I love the new  :             :
-            :             : member of my collection and it looks great.  I've had it for about a :             :
-            :             :  week and so far it has kept good time despite day 1 which is        :             :
-            :             : typical of a new mechanical watch                                    :             :
+            [
+            {"0": "Bucks", "1": "Milwaukee", "2": 60, "3": 22, "4": 0.732},
+            {"0": "Raptors", "1": "Toronto", "2": 58, "3": 24, "4": 0.707},
+            {"0": "76ers", "1": "Philadelphia", "2": 51, "3": 31, "4": 0.622},
+            {"0": "Celtics", "1": "Boston", "2": 49, "3": 33, "4": 0.598},
+            {"0": "Pacers", "1": "Indiana", "2": 48, "3": 34, "4": 0.585}
+            ]
             ''',
-            data='data_amazon_reviews.tsv',
-            input_format='tsv',
+            output_format='json')
+
+    def testJsonInput(self):
+        self.assertPol(
+            'df',
+            '''\
+            | color   | value |
+            | ------- | ----- |
+            | red     | #f00  |
+            | green   | #0f0  |
+            | blue    | #00f  |
+            | cyan    | #0ff  |
+            | magenta | #f0f  |
+            | yellow  | #ff0  |
+            | black   | #000  |
+            ''',
+            data='data_colors.json',
+            input_format='json',
             output_format='markdown')
 
+    def testSingleValueOutput(self):
+        self.assertPol(
+            'len(records)',
+            '''\
+            | value |
+            | ----- |
+            | 7     |
+            ''',
+            data='data_colors.json',
+            input_format='json',
+            output_format='markdown')
+
+    def testRecordOutput(self):
+        self.assertPol(
+            'records[0]',
+            '''\
+            | color | value |
+            | ----- | ----- |
+            | red   | #f00  |
+            ''',
+            data='data_colors.json',
+            input_format='json',
+            output_format='markdown')
+
+    def testRecordsWithHeader(self):
+        self.assertPol(
+            'records',
+            '''\
+            | color   | value |
+            | ------- | ----- |
+            | red     | #f00  |
+            | green   | #0f0  |
+            | blue    | #00f  |
+            | cyan    | #0ff  |
+            | magenta | #f0f  |
+            | yellow  | #ff0  |
+            | black   | #000  |
+            ''',
+            data='data_colors.json',
+            input_format='json',
+            output_format='markdown')
+
+    def testLinesWithHeader(self):
+        self.assertPol(
+            'lines',
+            '''\
+            | value                                 |
+            | ------------------------------------- |
+            | {"color": "red", "value": "#f00"}     |
+            | {"color": "green", "value": "#0f0"}   |
+            | {"color": "blue", "value": "#00f"}    |
+            | {"color": "cyan", "value": "#0ff"}    |
+            | {"color": "magenta", "value": "#f0f"} |
+            | {"color": "yellow", "value": "#ff0"}  |
+            | {"color": "black", "value": "#000"}   |
+            ''',
+            data='data_colors.json',
+            input_format='json',
+            output_format='markdown')
+
+    def testMarkdownNonUniformColumnCount(self):
+        self.assertPol(
+            'range(i) for i in range(1, 5)',
+            '''\
+            | value |
+            | ----- |
+            | 0     |
+            | 0     | 1 |
+            | 0     | 1 | 2 |
+            | 0     | 1 | 2 | 3 |
+            ''',
+            output_format='markdown')
+
+    def testReprPrinter(self):
+        self.assertPol(
+            'range(10)',
+            '''\
+            range(0, 10)
+            ''',
+            output_format='repr')
+
+    def testReprPrinterRecords(self):
+        self.assertPol(
+            '"aloha\u2011\u2011\u2011"',
+            '''\
+            'aloha\u2011\u2011\u2011'
+            ''',
+            output_format='repr')
+
+    def testStrPrinterRecords(self):
+        self.assertPol(
+            '"aloha\u2011\u2011\u2011"',
+            '''\
+            aloha\u2011\u2011\u2011
+            ''',
+            output_format='str')
+
+    def testSetPrinter(self):
+        self.assertPol(
+            'printer = ReprPrinter(); range(10)',
+            '''\
+            range(0, 10)
+            ''')
+
+    def testPrinterNone(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('printer = None; 123')
+        self.assertEqual(
+            'printer must be an instance of Printer. Found "None" instead',
+            str(context.exception.__cause__))
+
     # Support windows
+    # Change FS / RS in code

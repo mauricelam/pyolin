@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import ast
 import collections.abc
 import csv
@@ -7,8 +8,7 @@ import functools
 import importlib
 import io
 import itertools
-from itertools import zip_longest
-from math import floor
+import json
 import os
 import re
 import shutil
@@ -20,6 +20,9 @@ import traceback
 
 
 from contextlib import contextmanager
+from hashbang import command, Argument
+from itertools import zip_longest
+from math import ceil, floor
 
 
 pd = None
@@ -64,15 +67,15 @@ class AbstractParser:
         self.record_separator = record_separator or self.default_rs
         self.field_separator = field_separator or self.default_fs
 
-    def parserecord(self, recordstr):
-        raise NotImplemented()
-
     def records(self, stream):
-        for recordstr in gen_split(stream, self.record_separator):
-            yield Record(self.parserecord(recordstr), recordstr)
+        raise NotImplemented()
 
 
 class AwkParser(AbstractParser):
+    def records(self, stream):
+        for recordstr in gen_split(stream, self.record_separator):
+            yield Record(*self.parserecord(recordstr), recordstr=recordstr)
+
     def parserecord(self, recordstr):
         return re.split(self.field_separator, recordstr)
 
@@ -112,15 +115,17 @@ class CsvParser(AbstractParser):
         sniffer = CustomSniffer()
         dialect = sniffer.sniff(sniff_sample, delimiters=self.field_separator)
         csv_reader = csv.reader(stream2, sniffer.dialect)
+        header = None
         for lineno, line in enumerate(stream1):
             if sniffer.update_dialect(line):
                 csv_reader = csv.reader(
                     stream2, sniffer.dialect, delimiter=self.field_separator)
             fields = next(csv_reader)
             if lineno == 0 and sniffer.has_header(sniff_sample):
-                yield Header(fields, line)
+                header = Header(*fields, recordstr=line)
+                yield header
             else:
-                yield Record(fields, line)
+                yield Record(*fields, recordstr=line, header=header)
 
 
 class CsvDialectParser(AbstractParser):
@@ -131,30 +136,43 @@ class CsvDialectParser(AbstractParser):
         self.dialect = dialect
 
     def records(self, stream):
+        # TODO: Sniff header?
         stream1, stream2 = itertools.tee(
             gen_split(stream, self.record_separator))
         csv_reader = csv.reader(
             stream2, self.dialect, delimiter=self.field_separator)
         for line in stream1:
             fields = next(csv_reader)
-            yield Record(fields, line)
+            yield Record(*fields, recordstr=line)
+
+
+class JsonParser:
+    def records(self, stream):
+        records = json.load(stream)
+        debug('records', records)
+        header = None
+        for i, r in enumerate(records):
+            if not i:
+                header = Header(*r.keys(), recordstr='')
+                yield header
+            yield Record(*r.values(), recordstr=json.dumps(r), header=header)
+
+
+PARSERS = {
+    'awk': AwkParser,
+    'csv': CsvParser,
+    'csv_excel': lambda rs, fs: CsvDialectParser(rs, fs, dialect=csv.excel),
+    'csv_unix': lambda rs, fs: CsvDialectParser(rs, fs, dialect=csv.unix_dialect),
+    'tsv': lambda rs, fs: CsvParser(rs, '\t'),
+    'json': lambda rs, fs: JsonParser(),
+}
 
 
 def create_parser(input_format, record_separator, field_separator):
-    if input_format == 'awk':
-        return AwkParser(record_separator, field_separator)
-    elif input_format == 'csv':
-        return CsvParser(record_separator, field_separator)
-    elif input_format == 'csv_excel':
-        return CsvDialectParser(
-            record_separator, field_separator, dialect=csv.excel)
-    elif input_format == 'csv_unix':
-        return CsvDialectParser(
-            record_separator, field_separator, dialect=csv.unix_dialect)
-    elif input_format == 'tsv':
-        return CsvParser(record_separator, '\t')
-    else:
-        raise ValueError(f'Unknown input format {input_format}')
+    try:
+        return PARSERS[input_format](record_separator, field_separator)
+    except KeyError as e:
+        raise ValueError(f'Unknown input format {input_format}') from e
 
 
 def gen_records(
@@ -163,6 +181,13 @@ def gen_records(
         parser = create_parser(input_format, record_separator, field_separator)
         for record in parser.records(f):
             yield record
+
+
+class HasHeader:
+    @staticmethod
+    def get(o):
+        if isinstance(o, HasHeader):
+            return o.header
 
 
 class LazySequence(collections.abc.Iterable):
@@ -209,9 +234,26 @@ class LazySequence(collections.abc.Iterable):
         return LazySequence(itertools.chain(other, self))
 
 
+class RecordSequence(LazySequence, HasHeader):
+    def __init__(self, raw_sequence):
+        seq1, self._seq = itertools.tee(raw_sequence)
+        super().__init__(r for r in seq1 if not isinstance(r, Header))
+
+    @property
+    def header(self):
+        firstrow = next(self._seq, None)
+        if isinstance(firstrow, Header):
+            return firstrow
+        else:
+            return None
+
+
 def debug(*args):
     if os.getenv('DEBUG'):
         print(*args, file=sys.stderr)
+
+
+_UNDEFINED_ = object()
 
 
 class Printer:
@@ -236,23 +278,47 @@ class Printer:
         else:
             return [self.format_value(record)]
 
-    def print_result(self, result):
-        header = []
-        if pd and isinstance(result, pd.DataFrame):
-            header = list(result.columns)
-            result = (self.format_record(row) for i, row in result.iterrows())
-        elif isinstance(result, collections.abc.Iterable) \
-                and not isinstance(result, (str, Record, tuple, bytes)):
-            result = (self.format_record(r) for r in result if r is not None)
-            result, result_tee = itertools.tee(result)
-            num_columns = len(list(next(result_tee, [])))
-            header = [str(i) for i in range(num_columns)]
+    def _generate_header(self, num_columns):
+        if num_columns == 1:
+            return ['value']
         else:
-            header = ['value']
+            return [str(i) for i in range(num_columns)]
+
+    def print_result(self, result, *, header=None):
+        header = header or HasHeader.get(result)
+        if pd and isinstance(result, pd.DataFrame):
+            header = header or [str(i) for i in result.columns]
+            result = (self.format_record(row) for i, row in result.iterrows())
+        elif isinstance(result, collections.abc.Iterable):
+            if not isinstance(result, (str, Record, tuple, bytes)):
+                result = (self.format_record(r)
+                          for r in result if r is not _UNDEFINED_)
+                result, result_tee = itertools.tee(result)
+                num_columns = len(list(next(result_tee, [])))
+                header = header or self._generate_header(num_columns)
+            else:
+                result = (self.format_record(result),)
+                num_columns = len(result[0])
+                header = header or self._generate_header(num_columns)
+        else:
+            header = header or ['value']
             result = (self.format_record(result),)
 
         for line in self.format_table(result, header):
             print(line, flush=True, end='')
+
+
+class AutoPrinter(Printer):
+    def print_result(self, result, *, header=None):
+        printer_type = 'awk'
+        if isinstance(result, collections.abc.Iterable):
+            if not isinstance(result, (str, Record, tuple, bytes)):
+                printer_type = 'markdown'
+        self._printer = PRINTERS[printer_type]()
+        super().print_result(result, header=header)
+
+    def format_table(self, table, header):
+        return self._printer.format_table(table, header)
 
 
 class AwkPrinter(Printer):
@@ -262,14 +328,15 @@ class AwkPrinter(Printer):
 
 
 class CsvPrinter(Printer):
-    def __init__(self, *, header=False, delimiter=','):
-        self._header = header
-        self._delimiter = delimiter
+    def __init__(self, *, header=False, delimiter=',', dialect=csv.excel):
+        self.header = header
+        self.delimiter = delimiter
+        self.dialect = dialect
 
     def format_table(self, table, header):
         output = io.StringIO()
-        self.writer = csv.writer(output, delimiter=self._delimiter)
-        if self._header:
+        self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
+        if self.header:
             self.writer.writerow(header)
             yield self._pop_value(output)
         for record in table:
@@ -283,79 +350,123 @@ class CsvPrinter(Printer):
         return value
 
 
-class MarkdownPrinter(Printer):
-    def _markdown_row(self, cells, widths, wrappers):
-        cell_lines = (wrapper.wrap(cell)
-                      for wrapper, cell in zip(wrappers, cells))
-        line_cells = zip_longest(*cell_lines, fillvalue='')
-        width_formats = ['{:%d}' % w for w in widths]
-        row_template = '| ' + ' | '.join(width_formats) + ' |\n'
-        cont_row_template = ': ' + ' : '.join(width_formats) + ' :\n'
-        result = ''
-        for line_cell in line_cells:
-            result += row_template.format(*line_cell)
-            row_template = cont_row_template
-        return result
-
-    def _allocate_width(self, header, table):
-        if sys.stdout.isatty():
-            available_width, _ = shutil.get_terminal_size((100, 24))
-        else:
-            available_width = 100
-        # Subtract number of characters used by markdown
-        available_width -= 2 + 3 * (len(header) - 1) + 2
-        widths = [len(h) for h in header]
-        for record in table:
-            for i, c in enumerate(record):
-                widths[i] = max(widths[i], len(c))
-        wrap_candidates = [i for i, w in enumerate(widths)
-                           if w > available_width / len(header)]
-        for i in wrap_candidates:
-            widths[i] = 0
-        remaining_space = available_width - sum(widths)
-        if wrap_candidates:
-            divided_space = floor(remaining_space / len(wrap_candidates))
-            remaining_space = remaining_space % len(wrap_candidates)
-        else:
-            divided_space = 0
-        for i, wrap_candidate in enumerate(wrap_candidates):
-            widths[wrap_candidate] = \
-                divided_space + 1 if i < remaining_space else divided_space
-        return widths
-
-    def format_table(self, table, header):
-        table1, table2 = itertools.tee(table)
-        widths = self._allocate_width(header, itertools.islice(table2, 10))
-        wrappers = [
+class MarkdownRowFormat:
+    def __init__(self, widths):
+        self._width_formats = ['{:%d}' % w for w in widths]
+        self._row_template = '| ' + ' | '.join(self._width_formats) + ' |'
+        self._cont_row_template = ': ' + ' : '.join(self._width_formats) + ' :'
+        self._wrappers = [
             textwrap.TextWrapper(
                 width=w, expand_tabs=False, replace_whitespace=False,
                 drop_whitespace=False)
             for w in widths
         ]
-        yield self._markdown_row(header, widths, wrappers)
+
+    def format(self, cells):
+        cell_lines = [wrapper.wrap(cell) if wrapper else [cell]
+                      for wrapper, cell in zip_longest(self._wrappers, cells)]
+        line_cells = zip_longest(*cell_lines, fillvalue='')
+        result = ''
+        for i, line_cell in enumerate(line_cells):
+            # If there are extra columns that are not found in the header, also print them out.
+            # While that's not valid markdown, it's better than silently discarding the values.
+            extra_length = len(line_cell) - len(self._width_formats)
+            if not i:
+                template = self._row_template + ''.join(' {} |' for _ in range(extra_length))
+                result += template.format(*line_cell) + '\n'
+            else:
+                template = self._cont_row_template + ''.join(' {} :' for _ in range(extra_length))
+                result += self._cont_row_template.format(*line_cell) + '\n'
+        return result
+
+
+class MarkdownPrinter(Printer):
+    def _allocate_width(self, header, table):
+        if sys.stdout.isatty():
+            available_width, _ = shutil.get_terminal_size((100, 24))
+        else:
+            available_width = int(os.getenv('POL_TABLE_WIDTH', 100))
+        # Subtract number of characters used by markdown
+        available_width -= 2 + 3 * (len(header) - 1) + 2
+        remaining_space = available_width
+        record_lens = zip(*[[len(c) for c in record] for record in table])
+        lens = {i: max(len(h), *c_lens)
+                for i, (h, c_lens) in enumerate(zip(header, record_lens))}
+        widths = [0] * len(header)
+        while lens:
+            to_del = []
+            for i, l in lens.items():
+                if l < remaining_space / len(lens):
+                    widths[i] = l
+                    to_del.append(i)
+            for i in to_del:
+                del lens[i]
+            if not to_del:
+                divided = floor(remaining_space / len(lens))
+                remainder = remaining_space % len(lens)
+                for i in lens:
+                    widths[i] = divided + 1 if i < remainder else divided
+                break
+
+            remaining_space = available_width - sum(widths)
+            if remaining_space <= 0:
+                break
+        return [max(w, 1) for w in widths]
+
+    def format_table(self, table, header):
+        table1, table2 = itertools.tee(table)
+        widths = self._allocate_width(header, itertools.islice(table2, 10))
+        row_format = MarkdownRowFormat(widths)
+        if not header:
+            return
+        yield row_format.format(header)
         yield '| ' + ' | '.join('-' * w for w in widths) + ' |\n'
         for record in table1:
-            yield self._markdown_row(record, widths, wrappers)
+            yield row_format.format(record)
+
+
+class JsonPrinter(Printer):
+    def format_table(self, table, header):
+        def maybe_to_numeric(val):
+            try:
+                return int(val)
+            except ValueError:
+                try:
+                    return float(val)
+                except ValueError:
+                    return val
+
+        yield '[\n'
+        for i, record in enumerate(table):
+            if i:
+                yield ',\n'
+            yield json.dumps(
+                {h: maybe_to_numeric(f) for h, f in zip(header, record)})
+        yield '\n]\n'
+
+
+class ReprPrinter(Printer):
+    def print_result(self, result, *, header=None):
+        print(repr(result))
+
+
+class StrPrinter(Printer):
+    def print_result(self, result, *, header=None):
+        print(result)
 
 
 PRINTERS = {
-    'awk': AwkPrinter(),
-    'unix': AwkPrinter(),
-    'csv': CsvPrinter(),
-    'csv_header': CsvPrinter(header=True),
-    'tsv': CsvPrinter(delimiter='\t'),
-    'tsv_header': CsvPrinter(delimiter='\t', header=True),
-    'markdown': MarkdownPrinter(),
-    'table': MarkdownPrinter(),
+    'auto': AutoPrinter,
+    'awk': AwkPrinter,
+    'unix': AwkPrinter,
+    'csv': CsvPrinter,
+    'tsv': lambda: CsvPrinter(delimiter='\t'),
+    'markdown': MarkdownPrinter,
+    'table': MarkdownPrinter,
+    'json': JsonPrinter,
+    'repr': ReprPrinter,
+    'str': StrPrinter,
 }
-
-
-def print_result(result, *, output_format):
-    try:
-        printer = PRINTERS[output_format]
-    except KeyError:
-        raise ValueError(f'Unrecognized output format "{output_format}"')
-    printer.print_result(result)
 
 
 class Field(str):
@@ -585,12 +696,13 @@ class Field(str):
         return self.encode('utf-8')
 
 
-class Record(tuple):
-    def __new__(cls, args, recordstr):
+class Record(tuple, HasHeader):
+    def __new__(cls, *args, recordstr='', header=None):
         return super().__new__(cls, tuple(Field(f) for f in args))
 
-    def __init__(self, args, recordstr):
+    def __init__(self, *args, recordstr='', header=None):
         self.str = recordstr
+        self.header = header
 
 
 class Header(Record):
@@ -632,15 +744,6 @@ def _importnumpy():
     return np
 
 
-def _add_globals(dictionary, modules):
-    for module_name in modules:
-        module = importlib.import_module(module_name)
-        dictionary[module_name] = module
-    dictionary['re'] = re
-    dictionary['pd'] = LazyItem(_importpandas)
-    dictionary['np'] = LazyItem(_importnumpy)
-
-
 def split_last_statement(tokens, prog):
     def _line_pos_to_pos(linepos):
         line, pos = linepos
@@ -679,7 +782,7 @@ def parse_prog(prog):
     except SyntaxError as e:
         # Try to parse as <expr> if <condition>
         try:
-            eval_expr = ast.parse(f'{prog_expr} else None', mode='eval')
+            eval_expr = ast.parse(f'({prog_expr} else _UNDEFINED_)', mode='eval')
         except SyntaxError:
             try:
                 ast.parse(f'{prog_expr}', mode='exec')
@@ -722,10 +825,13 @@ class RecordScoped(LazyItem):
 
     def __call__(self, *args, **kwargs):
         if self._scope.set_scope('record'):
-            self.next()
+            self.__next__()
         return self._val
 
-    def next(self):
+    def __iter__(self):
+        return self
+
+    def __next__(self):
         '''
         Advances to the next record in the generator. This is done manually so
         that the value can be accessed multiple times within the same
@@ -753,25 +859,65 @@ class UserError(RuntimeError):
         return traceback.format_exception(
             self.__cause__,
             self.__cause__,
-            self.__cause__.__traceback__.tb_next)
+            self.__cause__.__traceback__.tb_next.tb_next)
 
     def __str__(self):
         return ''.join(self.formatted_tb()).rstrip('\n')
 
 
+@command(
+    Argument('field_separator', aliases='F'),
+    Argument('input_format', choices=list(PARSERS)),
+    Argument('output_format', choices=list(PRINTERS)),
+    formatter_class=argparse.RawDescriptionHelpFormatter)
 def pol(prog, input_file=None, *,
         field_separator=None,
         record_separator='\n',
         input_format='awk',
-        output_format='awk',
-        modules=()):
+        output_format='auto'):
+    '''
+    pol - Python one liners to easily parse and process data in Python.
+
+    Pol processes text information from stdin or a given file and evaluates
+    the given input `prog` and prints the result.
+
+    Example:
+        pol 'record[0] + record[1] if record[2] > 50'
+
+    In pol, the input file is treated as a table, which consists of many
+    records (lines). Each record is then consisted of many fields (columns).
+    The separator for records and fields are configurable. (Using what???)
+
+    Available variables:
+      - Record scoped:
+        record, fields - A tuple of the fields in the current line.
+            Additionally, `record.str` gives the original string of the given
+            line before processing.
+        line – Alias for `record.str`.
+
+        When referencing a variable in record scope, `prog` must not access
+        any other variables in table scope. In this mode, pol iterates through
+        each record from the input file and prints the result of `prog`.
+
+      - Table scoped:
+        records – A sequence of records (as described in "Record scoped"
+            section above).
+        lines – A sequence of lines (as described in "Record scoped" section
+            above).
+        file, contents – Contents of the entire file as a single string.
+        df – Contents of the entire file as a pandas.DataFrame. (Available
+            only if pandas is installed).
+      - General:
+        filename – The name of the file being processed, possibly None if
+            reading from stdin.
+        re – The regex module.
+        pd – The pandas module, if installed.
+    '''
     exec_statements, eval_expr = parse_prog(prog)
     debug('eval', ast.dump(exec_statements), ast.dump(eval_expr))
-    exec_compiled = compile(exec_statements,
-                            filename='pol_user_prog.py', mode='exec')
-    eval_compiled = compile(eval_expr,
-                            filename='pol_user_prog.py', mode='eval')
-    record_seq = LazySequence(
+    exec_compiled = compile(exec_statements, filename='pol_user_prog.py', mode='exec')
+    eval_compiled = compile(eval_expr, filename='pol_user_prog.py', mode='eval')
+    raw_record_seq = LazySequence(
         gen_records(
             input_file,
             input_format=input_format,
@@ -788,17 +934,22 @@ def pol(prog, input_file=None, *,
 
     def get_dataframe():
         pd = _importpandas()
-        firstrow = record_seq[0]
+        firstrow = raw_record_seq[0]
         if isinstance(firstrow, Header):
             df = pd.DataFrame(
-                record_seq[1:],
+                raw_record_seq[1:],
                 columns=[f.str for f in firstrow])
         else:
-            df = pd.DataFrame(record_seq)
+            df = pd.DataFrame(raw_record_seq)
         df = df.apply(pd.to_numeric, errors='ignore')
         return df
 
+    record_seq = RecordSequence(raw_record_seq)
     record_var = record_scoped(record_seq)
+    try:
+        printer = PRINTERS[output_format]()
+    except KeyError:
+        raise ValueError(f'Unrecognized output format "{output_format}"')
     global_dict = ImplicitVarsDict({
         'lines': table_scoped(lambda: LazySequence(r.str for r in record_seq)),
         'records': table_scoped(lambda: record_seq),
@@ -809,28 +960,39 @@ def pol(prog, input_file=None, *,
         'record': record_var,
         'line': LazyItem(lambda: record_var().str, cache=False),
         'fields': record_var,
+        'printer': printer,
+        're': re,
+        'pd': LazyItem(_importpandas),
+        'np': LazyItem(_importnumpy),
+        'Header': Header,
+        '_UNDEFINED_': _UNDEFINED_,
+        'header': None,
+
+        'AutoPrinter': AutoPrinter,
+        'AwkPrinter': AwkPrinter,
+        'CsvPrinter': CsvPrinter,
+        'MarkdownPrinter': MarkdownPrinter,
+        'JsonPrinter': JsonPrinter,
+        'ReprPrinter': ReprPrinter,
+        'StrPrinter': StrPrinter,
     })
-    _add_globals(global_dict, modules)
-    try:
+
+    def _eval_prog():
         exec(exec_compiled, global_dict)
-        result = eval(eval_compiled, global_dict)
+        return eval(eval_compiled, global_dict)
+
+    try:
+        result = _eval_prog()
     except NoMoreRecords:
         pass
     except Exception as e:
         raise UserError() from e
     else:
         if scope.scope == 'record':
-            _result = result
+            result = itertools.chain((result,), (_eval_prog() for _ in record_var))
 
-            def _gen_result():
-                yield _result
-                while True:
-                    try:
-                        record_var.next()
-                    except NoMoreRecords:
-                        break
-                    exec(exec_compiled, global_dict)
-                    yield eval(eval_compiled, global_dict)
-
-            result = _gen_result()
-        print_result(result, output_format=output_format)
+        printer = global_dict['printer']
+        if not isinstance(printer, Printer):
+            raise RuntimeError(
+                f'printer must be an instance of Printer. Found "{repr(printer)}" instead')
+        global_dict['printer'].print_result(result, header=global_dict.get('header'))
