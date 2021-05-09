@@ -1368,6 +1368,15 @@ Actual:
             input_format='json',
             output_format='markdown')
 
+    def testContains(self):
+        self.assertPol(
+            '("green", "#0f0") in records',
+            '''\
+            True
+            ''',
+            data='data_colors.json',
+            input_format='json')
+
     def testSingleValueOutput(self):
         self.assertPol(
             'len(records)',
