@@ -6,38 +6,29 @@ import itertools
 import re
 import sys
 import textwrap
-import traceback
 
 from contextlib import contextmanager
 from hashbang import command, Argument
 
-from .util import debug, LazyItem, LazyItemDict, LazySequence, _UNDEFINED_
+from .util import debug, BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_, NoMoreRecords
 from .ioformat import *
 from .record import Record, HasHeader, Header, RecordSequence
 from .parser import Prog
 
 
 @contextmanager
-def get_io(input_file):
+def get_io(input_file, *, binary=False):
     if input_file:
-        with open(input_file, 'r') as f:
+        mode = 'rb' if binary else 'r'
+        with open(input_file, mode) as f:
             yield f
     else:
         yield sys.stdin
 
 
-def get_contents(input_file):
-    with get_io(input_file) as f:
-        return f.read()
-
-
-class NoMoreRecords(StopIteration):
-    pass
-
-
 class RecordScoped(LazyItem):
     def __init__(self, generator, *, on_accessed):
-        super().__init__(self._get_first_time, on_accessed=on_accessed, cache=True)
+        super().__init__(self._get_first_time, on_accessed=on_accessed)
         self._iter = iter(generator)
 
     def _get_first_time(self):
@@ -59,18 +50,6 @@ class RecordScoped(LazyItem):
             return self._val
         except StopIteration as e:
             raise NoMoreRecords() from e
-
-
-class UserError(RuntimeError):
-
-    def formatted_tb(self):
-        return traceback.format_exception(
-            self.__cause__,
-            self.__cause__,
-            self.__cause__.__traceback__.tb_next.tb_next)
-
-    def __str__(self):
-        return ''.join(self.formatted_tb()).rstrip('\n')
 
 
 @command(
@@ -122,12 +101,20 @@ def pol(prog, input_file=None, *,
         pd – The pandas module, if installed.
     '''
     prog = Prog(prog)
+    parser_box = BoxedItem(lambda: create_parser(input_format, record_separator, field_separator))
 
     def gen_records():
-        parser = create_parser(input_format, record_separator, field_separator)
-        with get_io(input_file) as f:
+        parser_box.frozen = True
+        parser = parser_box()
+        with get_io(input_file, binary=parser.binary) as f:
             for record in parser.records(f):
                 yield record
+
+    def get_contents(input_file):
+        parser_box.frozen = True
+        parser = parser_box()
+        with get_io(input_file, binary=parser.binary) as f:
+            return f.read()
 
     record_seq = RecordSequence(gen_records())
 
@@ -145,29 +132,29 @@ def pol(prog, input_file=None, *,
             raise RuntimeError('Cannot access both record scoped and table scoped variables')
         scope = newscope
 
-    def table_scoped(value, *, lazy=True):
-        func = (lambda: value) if not lazy else value
-        return LazyItem(func, on_accessed=lambda: set_scope('table'), cache=lazy)
+    def table_scoped(func):
+        return LazyItem(func, on_accessed=lambda: set_scope('table'))
 
     record_var = RecordScoped(record_seq, on_accessed=lambda: set_scope('record'))
     try:
         printer = PRINTERS[output_format]()
     except KeyError:
         raise ValueError(f'Unrecognized output format "{output_format}"')
-    global_dict = LazyItemDict({
-        'lines': table_scoped(LazySequence(r.str for r in record_seq), lazy=False),
-        'records': table_scoped(record_seq, lazy=False),
+    global_dict = ItemDict({
+        'lines': table_scoped(lambda: StreamingSequence(r.str for r in record_seq)),
+        'records': table_scoped(lambda: record_seq),
         'filename': input_file,
         'file': table_scoped(lambda: get_contents(input_file)),
         'contents': table_scoped(lambda: get_contents(input_file)),
         'df': table_scoped(get_dataframe),
         'record': record_var,
         'fields': record_var,
-        'line': LazyItem(lambda: record_var().str, cache=False),
+        'line': Item(lambda: record_var().str),
         'printer': printer,
+        'parser': parser_box,
         're': re,
-        'pd': LazyItem(lambda: importlib.import_module('pandas')),
-        'np': LazyItem(lambda: importlib.import_module('numpy')),
+        'pd': Item(lambda: importlib.import_module('pandas')),
+        'np': Item(lambda: importlib.import_module('numpy')),
         'Header': Header,
         '_UNDEFINED_': _UNDEFINED_,
         'header': None,
@@ -179,14 +166,18 @@ def pol(prog, input_file=None, *,
         'JsonPrinter': JsonPrinter,
         'ReprPrinter': ReprPrinter,
         'StrPrinter': StrPrinter,
+
+        'AwkParser': AwkParser,
+        'CsvParser': CsvParser,
+        'CsvDialectParser': CsvDialectParser,
+        'JsonParser': JsonParser,
+        'binary': BinaryParser,
     })
 
     try:
         result = prog.exec(global_dict)
     except NoMoreRecords:
         pass
-    except Exception as e:
-        raise UserError() from e
     else:
         if scope == 'record':
             result = itertools.chain((result,), (prog.exec(global_dict) for _ in record_var))

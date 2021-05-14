@@ -41,6 +41,7 @@ def _gen_split(stream, delimiter):
 class AbstractParser:
     default_fs = r'[ \t]+'
     default_rs = r'\n'
+    binary = False
 
     def __init__(self, record_separator, field_separator):
         self.record_separator = record_separator or self.default_rs
@@ -121,6 +122,8 @@ class CsvDialectParser(AbstractParser):
 
 
 class JsonParser:
+    binary = False
+
     def records(self, stream):
         records = json.load(stream)
         debug('records', records)
@@ -132,6 +135,13 @@ class JsonParser:
             yield Record(*r.values(), recordstr=json.dumps(r), header=header)
 
 
+class BinaryParser:
+    binary = True
+
+    def records(self, stream):
+        raise AttributeError('Record based attributes are not supported in binary input mode')
+
+
 PARSERS = {
     'awk': AwkParser,
     'csv': CsvParser,
@@ -139,6 +149,7 @@ PARSERS = {
     'csv_unix': lambda rs, fs: CsvDialectParser(rs, fs, dialect=csv.unix_dialect),
     'tsv': lambda rs, fs: CsvParser(rs, '\t'),
     'json': lambda rs, fs: JsonParser(),
+    'binary': lambda rs, fs: BinaryParser(),
 }
 
 

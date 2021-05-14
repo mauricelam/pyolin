@@ -1,7 +1,7 @@
 import itertools
 
 from .field import Field
-from .util import LazySequence, cached_property
+from .util import StreamingSequence, cached_property
 
 
 class HasHeader:
@@ -24,7 +24,7 @@ class Header(Record):
     pass
 
 
-class RecordSequence(LazySequence, HasHeader):
+class RecordSequence(StreamingSequence, HasHeader):
     def __init__(self, records_iter):
         seq1, self._seq = itertools.tee(records_iter)
         super().__init__(r for r in seq1 if not isinstance(r, Header))

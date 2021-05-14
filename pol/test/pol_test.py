@@ -1,6 +1,7 @@
 import contextlib
 import os
 from pol import pol
+from pprint import pformat
 import subprocess
 import sys
 import textwrap
@@ -566,7 +567,7 @@ Actual:
             'type(lines).__name__, type(records).__name__, '
             'type(file).__name__, type(contents).__name__',
             '''\
-            LazySequence RecordSequence str str
+            StreamingSequence RecordSequence str str
             ''')
 
     def testBoolean(self):
@@ -1101,12 +1102,12 @@ Actual:
         with self.assertRaises(ErrorWithStderr) as context:
             run_pol('import urllib; urllib.parse.quote(12345)')
         formatted = context.exception.__cause__.formatted_tb()
-        self.assertEqual(5, len(formatted), formatted)
-        self.assertTrue('Traceback (most recent call last)' in formatted[0])
-        self.assertTrue('pol_user_prog.py' in formatted[1])
-        self.assertTrue('return quote_from_bytes' in formatted[2])
-        self.assertTrue('"quote_from_bytes() expected bytes"' in formatted[3])
-        self.assertTrue('quote_from_bytes() expected bytes' in formatted[4])
+        self.assertEqual(5, len(formatted), pformat(formatted))
+        self.assertIn('Traceback (most recent call last)', formatted[0])
+        self.assertIn('pol_user_prog.py', formatted[1])
+        self.assertIn('return quote_from_bytes', formatted[2])
+        self.assertIn('"quote_from_bytes() expected bytes"', formatted[3])
+        self.assertIn('quote_from_bytes() expected bytes', formatted[4])
 
     def testInvalidOutputFormat(self):
         with self.assertRaises(ErrorWithStderr) as context:
@@ -1488,5 +1489,100 @@ Actual:
             'printer must be an instance of Printer. Found "None" instead',
             str(context.exception.__cause__))
 
+    def testRaiseStopIteration(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('raise StopIteration(); None')
+        formatted = context.exception.__cause__.formatted_tb()
+        self.assertEqual(3, len(formatted), pformat(formatted))
+        self.assertIn('Traceback (most recent call last)', formatted[0])
+        self.assertIn('pol_user_prog.py', formatted[1])
+        self.assertIn('StopIteration', formatted[2])
+
+    def testBinaryInputLen(self):
+        self.assertPol(
+            'len(file)',
+            '''\
+            21
+            ''',
+            input_format='binary',
+            data='data_pickle')
+
+    def testBinaryInputPickle(self):
+        self.assertPol(
+            'import pickle; pickle.loads(file)',
+            '''\
+            hello world
+            ''',
+            input_format='binary',
+            data='data_pickle')
+
+    def testBinaryInputAccessRecords(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('records', input_format='binary', data='data_pickle')
+        self.assertEqual(
+            'Record based attributes are not supported in binary input mode',
+            str(context.exception.__cause__))
+
+    def testSetFieldSeparator(self):
+        self.assertPol(
+            'parser.field_separator = ","; record',
+            '''\
+            | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
+            | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
+            | Alfalfa   | Aloysius   | 123-45-6789 | 40.0 | 90.0 | 100.0 | 83.0 | 49.0 | D- |
+            | Alfred    | University | 123-12-1234 | 41.0 | 97.0 | 96.0  | 97.0 | 48.0 | D+ |
+            | Gerty     | Gramma     | 567-89-0123 | 41.0 | 80.0 | 60.0  | 40.0 | 44.0 | C  |
+            | Android   | Electric   | 087-65-4321 | 42.0 | 23.0 | 36.0  | 45.0 | 47.0 | B- |
+            | Franklin  | Benny      | 234-56-2890 | 50.0 | 1.0  | 90.0  | 80.0 | 90.0 | B- |
+            | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
+            | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
+            ''',
+            data='data_grades_simple_csv.csv')
+
+    def testSetRecordSeparator(self):
+        self.assertPol(
+            'parser.record_separator = ","; record',
+            '''\
+            | value     |
+            | --------- |
+            | JET       |
+            | 20031201  |
+            | 20001006  |
+            | 53521     |
+            | 1.000E+01 |
+            | NBIC      |
+            | HSELM     |
+            | TRANS     |
+            | 2.000E+00 |
+            | 1.000E+00 |
+            | 2         |
+            | 1         |
+            | 0         |
+            | 0         |
+            ''',
+            data='data_onerow.csv')
+
+    def testSetParser(self):
+        self.assertPol(
+            'parser = JsonParser(); df',
+            '''\
+            | color   | value |
+            | ------- | ----- |
+            | red     | #f00  |
+            | green   | #0f0  |
+            | blue    | #00f  |
+            | cyan    | #0ff  |
+            | magenta | #f0f  |
+            | yellow  | #ff0  |
+            | black   | #000  |
+            ''',
+            data='data_colors.json')
+
+    def testSetParserRecord(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('a = records[0]; parser = 123; 123')
+        self.assertEqual(
+            'Cannot set parser after it has been used',
+            str(context.exception.__cause__.__cause__))
+
     # Support windows
-    # Change FS / RS in code

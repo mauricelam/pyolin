@@ -3,8 +3,9 @@ import io
 import textwrap
 import token
 import tokenize
+import traceback
 
-from .util import debug
+from .util import debug, NoMoreRecords
 
 
 def _split_last_statement(tokens, prog):
@@ -67,6 +68,18 @@ def _parse(prog):
     return exec_statements, eval_expr
 
 
+class UserError(RuntimeError):
+
+    def formatted_tb(self):
+        return traceback.format_exception(
+            self.__cause__,
+            self.__cause__,
+            self.__cause__.__traceback__.tb_next)
+
+    def __str__(self):
+        return ''.join(self.formatted_tb()).rstrip('\n')
+
+
 class Prog:
     def __init__(self, prog):
         self._exec, self._eval = _parse(prog)
@@ -75,5 +88,10 @@ class Prog:
         self._eval = compile(self._eval, filename='pol_user_prog.py', mode='eval')
 
     def exec(self, globals):
-        exec(self._exec, globals)
-        return eval(self._eval, globals)
+        try:
+            exec(self._exec, globals)
+            return eval(self._eval, globals)
+        except NoMoreRecords:
+            raise
+        except Exception as e:
+            raise UserError() from e

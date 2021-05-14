@@ -21,14 +21,19 @@ def debug(*args):
 _UNDEFINED_ = object()
 
 
-class LazySequence(collections.abc.Sequence):
+class NoMoreRecords(StopIteration):
+    pass
+
+
+class StreamingSequence(collections.abc.Sequence):
     '''
-    An iterator that also implements the sequence interface
+    An iterator that also implements the sequence interface. This is "streaming" in the sense that
+    it will try its best give the results as soon as we can get the answer from the available input,
+    instead of eagerly looking through all of the items in the given iterator.
     '''
     def __init__(self, iterator):
         self._iter = iterator
         self._list = None
-        self._itered = False
 
     @property
     def list(self):
@@ -62,40 +67,80 @@ class LazySequence(collections.abc.Sequence):
         return len(self.list)
 
     def __add__(self, other):
-        return LazySequence(itertools.chain(self, other))
+        return StreamingSequence(itertools.chain(self, other))
 
     def __radd__(self, other):
-        return LazySequence(itertools.chain(other, self))
+        return StreamingSequence(itertools.chain(other, self))
 
 
-class LazyItemDict(dict):
+class ItemDict(dict):
     '''
     A dict that can evaluate LazyItems on demand when they are accessed.
     '''
     def __getitem__(self, key):
         value = dict.__getitem__(self, key)
-        if isinstance(value, LazyItem):
+        if isinstance(value, Item):
             return value()
         return value
 
+    def __setitem__(self, key, value):
+        try:
+            oldval = super().__getitem__(key)
+            if isinstance(oldval, SettableItem):
+                oldval.set(value)
+                return
+        except KeyError:
+            pass
+        debug(f'dict setting {key}={value}')
+        return super().__setitem__(key, value)
 
-class LazyItem:
-    '''
-    Item for ImplicitVarsDict that is evaluated on demand.
-    '''
-    def __init__(self, func, *, cache=True, on_accessed=None):
+
+class Item:
+    def __init__(self, func):
         self.func = func
+
+    def __call__(self, *arg, **kwargs):
+        return self.func(*arg, **kwargs)
+
+
+class SettableItem(Item):
+    def set(self, value):
+        raise NotImplemented()
+
+
+class BoxedItem(SettableItem):
+    def __init__(self, func):
+        super().__init__(func)
+        self.value = None
+        self.frozen = False
+
+    def set(self, value):
+        debug('setting boxed value ', value)
+        if self.frozen:
+            raise RuntimeError('Cannot set parser after it has been used')
+        self.value = value
+
+    def __call__(self):
+        if self.value is not None:
+            return self.value
+        self.value = super().__call__()
+        return self.value
+
+
+class LazyItem(Item):
+    '''
+    Item for ItemDict that is evaluated on demand.
+    '''
+    def __init__(self, func, *, on_accessed=None):
+        super().__init__(func)
         self._val = None
-        self._cache_state = 'no_cached_value' if cache else 'dont_cache'
+        self._cached = False
         self._on_accessed = on_accessed
 
     def __call__(self, *arg, **kwargs):
-        if self._cache_state == 'cached':
-            return self._val
-        value = self.func(*arg, **kwargs)
-        if self._on_accessed:
-            self._on_accessed()
-        if self._cache_state != 'dont_cache':
-            self._val = value
-            self._cache_state = 'cached'
-        return value
+        if not self._cached:
+            self._val = super().__call__(*arg, **kwargs)
+            if self._on_accessed:
+                self._on_accessed()
+            self._cached = True
+        return self._val
