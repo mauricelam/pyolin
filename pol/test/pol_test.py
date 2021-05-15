@@ -18,17 +18,17 @@ def _test_file(file):
 def run_pol(prog, *, data='data_nba.txt', **extra_args):
     with run_capturing_output(errmsg=f'Prog: {prog}') as output:
         pol.pol(prog, _test_file(data), **extra_args)
-        return output.getvalue()
+        return output
 
 
 @contextlib.contextmanager
-def polPopen(prog, extra_args=[], **kwargs):
+def polPopen(prog, extra_args=[], universal_newlines=True, **kwargs):
     with subprocess.Popen(
         [sys.executable, 'main.py', prog] + extra_args,
         stdin=kwargs.get('stdin', subprocess.PIPE),
         stdout=kwargs.get('stdout', subprocess.PIPE),
         stderr=kwargs.get('stderr', subprocess.PIPE),
-        universal_newlines=True,
+        universal_newlines=universal_newlines,
         **kwargs
     ) as proc:
         yield proc
@@ -41,18 +41,34 @@ class PolTest(unittest.TestCase):
 
     def assertPol(self, prog, expected_output, *, data='data_nba.txt', repr=False, **kwargs):
         actual = run_pol(prog, data=data, **kwargs)
-        expected = textwrap.dedent(expected_output)
-        self.assertEqual(
-            actual,
-            expected,
-            msg=f'''\
+        if isinstance(expected_output, str):
+            expected = textwrap.dedent(expected_output)
+            self.assertEqual(
+                actual.getvalue(),
+                expected,
+                msg=f'''\
 Prog: pol \'{prog}\' {_test_file(data)}
 Expected:
 {textwrap.indent(expected, '    ')}
 ---
 
 Actual:
-{textwrap.indent(actual, '    ')}
+{textwrap.indent(actual.getvalue(), '    ')}
+---
+''')
+        else:
+            expected = expected_output
+            self.assertEqual(
+                actual.getbytes(),
+                expected,
+                msg=f'''\
+Prog: pol \'{prog}\' {_test_file(data)}
+Expected:
+    {expected!r}
+---
+
+Actual:
+    {actual.getbytes()!r}
 ---
 ''')
 
@@ -94,6 +110,42 @@ Actual:
             | Celtics | Boston       | 49 | 33 | 0.598 |
             | Pacers  | Indiana      | 48 | 34 | 0.585 |
             ''')
+
+    def testAwkOutputFormat(self):
+        self.assertPol(
+            'fields',
+            '''\
+            Bucks Milwaukee 60 22 0.732
+            Raptors Toronto 58 24 0.707
+            76ers Philadelphia 51 31 0.622
+            Celtics Boston 49 33 0.598
+            Pacers Indiana 48 34 0.585
+            ''',
+            output_format='awk')
+
+    def testAwkOutputFormatFieldSeparator(self):
+        self.assertPol(
+            'printer.field_separator = ","; fields',
+            '''\
+            Bucks,Milwaukee,60,22,0.732
+            Raptors,Toronto,58,24,0.707
+            76ers,Philadelphia,51,31,0.622
+            Celtics,Boston,49,33,0.598
+            Pacers,Indiana,48,34,0.585
+            ''',
+            output_format='awk')
+
+    def testAwkOutputFormatRecordSeparator(self):
+        self.assertPol(
+            'printer.record_separator = ";\\n"; fields',
+            '''\
+            Bucks Milwaukee 60 22 0.732;
+            Raptors Toronto 58 24 0.707;
+            76ers Philadelphia 51 31 0.622;
+            Celtics Boston 49 33 0.598;
+            Pacers Indiana 48 34 0.585;
+            ''',
+            output_format='awk')
 
     def testReorderFields(self):
         self.assertPol(
@@ -462,6 +514,14 @@ Actual:
                 self.assertEqual(
                     proc.stdout.readline(),
                     'Celtics Boston     49 33 0.598\n')
+
+    def testStreamingStdinBinary(self):
+        with polPopen(
+                'file[:2]',
+                extra_args=['--input_format=binary', '--output_format=binary'],
+                universal_newlines=False) as proc:
+            stdout, stderr = proc.communicate(b'\x30\x62\x43\x00')
+            self.assertEqual(stdout, b'\x30\x62')
 
     def testStreamingSlice(self):
         with polPopen(
@@ -1130,13 +1190,32 @@ Actual:
 
     def testCsvOutputFormatUnix(self):
         self.assertPol(
-            'printer.dialect = "unix"; records',
+            'printer.dialect = csv.unix_dialect; records',
             '''\
             "Bucks","Milwaukee","60","22","0.732"
             "Raptors","Toronto","58","24","0.707"
             "76ers","Philadelphia","51","31","0.622"
             "Celtics","Boston","49","33","0.598"
             "Pacers","Indiana","48","34","0.585"
+            ''',
+            output_format='csv')
+
+    def testCsvOutputFormatUnix(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('printer.dialect = "invalid"; records', output_format='csv')
+        self.assertEqual(
+            'Unknown dialect "invalid"',
+            str(context.exception.__cause__))
+
+    def testCsvOutputFormatDelimiter(self):
+        self.assertPol(
+            'printer.delimiter = "^"; records',
+            '''\
+            Bucks^Milwaukee^60^22^0.732\r
+            Raptors^Toronto^58^24^0.707\r
+            76ers^Philadelphia^51^31^0.622\r
+            Celtics^Boston^49^33^0.598\r
+            Pacers^Indiana^48^34^0.585\r
             ''',
             output_format='csv')
 
@@ -1169,7 +1248,7 @@ Actual:
 
     def testCsvOutputWithHeader(self):
         self.assertPol(
-            'printer.header = True; df[["Last name", "SSN", "Final"]]',
+            'printer.print_header = True; df[["Last name", "SSN", "Final"]]',
             '''\
             Last name,SSN,Final\r
             Alfalfa,123-45-6789,49\r
@@ -1201,7 +1280,7 @@ Actual:
 
     def testNumericHeader(self):
         self.assertPol(
-            'printer.header = True; record[0],record[2],record[7]',
+            'printer.print_header = True; record[0],record[2],record[7]',
             '''\
             0,1,2\r
             Alfalfa,123-45-6789,49.0\r
@@ -1459,6 +1538,14 @@ Actual:
             ''',
             output_format='repr')
 
+    def testReprPrinterTable(self):
+        self.assertPol(
+            'records',
+            '''\
+            [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
+            ''',
+            output_format='repr')
+
     def testReprPrinterRecords(self):
         self.assertPol(
             '"aloha\u2011\u2011\u2011"',
@@ -1475,9 +1562,17 @@ Actual:
             ''',
             output_format='str')
 
+    def testStrPrinterTable(self):
+        self.assertPol(
+            'records',
+            '''\
+            [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
+            ''',
+            output_format='str')
+
     def testSetPrinter(self):
         self.assertPol(
-            'printer = ReprPrinter(); range(10)',
+            'printer = new_printer("repr"); range(10)',
             '''\
             range(0, 10)
             ''')
@@ -1515,6 +1610,13 @@ Actual:
             ''',
             input_format='binary',
             data='data_pickle')
+
+    def testBinaryPrinter(self):
+        self.assertPol(
+            'b"\\x30\\x62\\x43\\x00"',
+            b'\x30\x62\x43\x00',
+            input_format='binary',
+            output_format='binary')
 
     def testBinaryInputAccessRecords(self):
         with self.assertRaises(ErrorWithStderr) as context:
@@ -1564,7 +1666,7 @@ Actual:
 
     def testSetParser(self):
         self.assertPol(
-            'parser = JsonParser(); df',
+            'parser = new_parser("json"); df',
             '''\
             | color   | value |
             | ------- | ----- |
@@ -1585,10 +1687,25 @@ Actual:
             'Cannot set parser after it has been used',
             str(context.exception.__cause__.__cause__))
 
+    def testRecordsIfUndefined(self):
+        self.assertPol(
+            'records if False',
+            '''\
+            ''')
+
+    def testUndefinedRepr(self):
+        self.assertPol(
+            '_UNDEFINED_',
+            '''\
+            Undefined()
+            ''',
+            output_format='repr')
+
+    def testUndefinedStr(self):
+        self.assertPol(
+            '_UNDEFINED_',
+            '''\
+            ''',
+            output_format='str')
+
     # Support windows
-    # Change OFS and ORS
-    # Binary printer
-    # Test Binary stdin
-    # Implicit csv import
-    # CSV dialect error checking
-    # pol 'records if False' --output_format=repr

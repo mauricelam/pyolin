@@ -1,8 +1,7 @@
 # pol
 Tool to easily write Python one-liners
 
-Pol processes text information from stdin or a given file and evaluates
-the given input `prog` and prints the result.
+Pol processes data from stdin or a given file, evaluates the given input `prog` and prints the result.
 
 Example:
 ```sh
@@ -107,76 +106,70 @@ Available variables:
     - `printer` – A printer instance that determines the format of the output data.
         See the Printers section for more.
   - Modules:
-    - `re` – The regex module.
-    - `pd` – The pandas module, if installed.
-    - `np` – The numpy module, if installed.
-    - Other modules can be imported manually
+    - `re`, `csv`, `pd` (pandas), `np` (numpy)
 
 ## Parsers
 
-### `AwkParser`
-`--input_format` `awk` `unix`
+### `awk`
+alias: `unix`
 
 An input format parser that is similar to Awk's parsing strategy. It reads until the `record_separator` is found (default: `'\n'`), and for each record, it assumes the fields are separated by the `field_separator` (default: `' '` or `'\t'`). Regular expressions are allowed for both `record_separator` and `field_separator` for this parser.
 
-### `CsvParser`
-`--input_format` `csv` `tsv`
+### `csv`
 
 Treats the input file as a "delimiter-separated value". By default the delimiter is comma (hence "csv"), but changing the `field_separator` can change the delimiter to another value. Regular expressions are only allowed for `record_separator` for this parser.
 
-### `CsvDialectParser`
-`--input_format` `csv_excel`, `csv_unix`
+__`tsv`__: Same as `csv`, but the delimiter is tab instead.
 
-Treats the input file as a "delimiter-separated value" using the given dialect. see the [Python csv module documentation](https://docs.python.org/3/library/csv.html) for details on the dialects. By default the delimiter is comma (hence "csv"), but changing the `field_separator` can change the delimiter to another value. Regular expressions are only allowed for `record_separator` for this parser.
+__`csv_excel`, `csv_unix`__: Similar to `csv`, but parsed using the given dialect. See the [Python csv module documentation](https://docs.python.org/3/library/csv.html) for details on the dialects. Regular expressions are only allowed for `record_separator` for this parser.
 
-### `JsonParser`
-`--input_format` `json`
+### `json`
 
 Treats the input file as JSON. This parser does not support streaming (the entire JSON content needs to be loaded into memory first).
 
-### `BinaryParser`
-`--input_format` `binary`
+### `binary`
 
 Treats the input file as binary. The input file will be read in binary mode. `records`, `lines`, `df`, and other variables derived from these are not available when using this parser.
 
 ## Printers
 
-### `AutoPrinter`
-`--output_format` `auto`
+### `auto`
 
 Automatically detect the suitable output format for best human-readability depending on the result data type. If the result datatype is a list, this will be printed in a markdown table. Otherwise, this will be printed in the "Awk" format.
 
-### `AwkPrinter`
-`--output_format` `awk` `unix`
+### `awk`
+alias: `unix`
 
 A printer that mimics the behavior of Awk. By default it prints each record in a new line, where each field within a record is separated by a space. The separators can be modified by setting the corresponding fields of the printer. e.g. `printer.field_separator = ","` or `printer.record_separator = "\r\n"`
 
-### `CsvPrinter`
-`--output_format` `csv`, `tsv`
+### `csv`
 
-A printer that prints the data out in CSV or TSV format. This uses the [`excel` dialect](https://docs.python.org/3/library/csv.html#csv.excel) by default, but can be modified by setting the dialect field of the printer. e.g. `printer.dialect = csv.unix_dialect`
+A printer that prints the data out in CSV format. This uses the [`excel` dialect](https://docs.python.org/3/library/csv.html#csv.excel) by default, but can be modified by setting the dialect field of the printer. e.g. `printer.dialect = csv.unix_dialect`
 
-### `MarkdownPrinter`
-`--output_format` `markdown` `table`
+__`tsv`__: Same as `csv` but uses tabs as the delimiter.
+
+### `markdown`
+alias: `table`
 
 A printer that prints the data out in [markdown table format](https://www.markdownguide.org/extended-syntax/#tables). Note that this does not always print out a valid markdown table if the result data does not conform. For example, if the header has fewer number of fields than the data itself, the data will still be printed without a corresponding header, but depending on the markdown parser, that may be ignored or rejected. Similarly, if the resulting data is an empty list, it will print out only the header and divider rows, which is not a valid markdown table.
 
-### `JsonPrinter`
-`--output_format` `json`
+### `json`
 
 A printer that prints the data out in JSON format. The output JSON will be an array, and each record will be treated as an object, where the key is the header label.
 
-### `ReprPrinter`
-`--output_format` `repr`
+### `repr`
 
 A printer that prints the result out using the Python built-in `repr` function.
 
-### `StrPrinter`
-`--output_format` `str`
+### `str`
 
 A printer that prints the result out using the Python built-in `str` function.
 
-## Backstory
+### `binary`
+
+A printer that writes the raw binary the result, expected to be bytes or bytearray, to stdout.
+
+## Motivation for creating pol
 
 Python is a powerful language that is easy to read and write, and it has lots of tools, built-in or libraries that helps with text and data manipulation extremely quickly. However, there are not a lot of usage for Python in the command line in the form of quick one-liner scripts. To start using Python in the command line you have to be somewhat committed in creating a script file.
 

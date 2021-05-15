@@ -24,7 +24,7 @@ def get_io(input_file, *, binary=False):
         with open(input_file, mode) as f:
             yield f
     else:
-        yield sys.stdin
+        yield sys.stdin.buffer if binary else sys.stdin
 
 
 class RecordScoped(LazyItem):
@@ -103,7 +103,8 @@ def pol(prog, input_file=None, *,
         pd – The pandas module, if installed.
     '''
     prog = Prog(prog)
-    parser_box = BoxedItem(lambda: create_parser(input_format, record_separator, field_separator))
+    new_parser = lambda input_format: create_parser(input_format, record_separator, field_separator)
+    parser_box = BoxedItem(lambda: new_parser(input_format))
 
     def gen_records():
         parser_box.frozen = True
@@ -139,7 +140,7 @@ def pol(prog, input_file=None, *,
 
     record_var = RecordScoped(record_seq, on_accessed=lambda: set_scope('record'))
     try:
-        printer = PRINTERS[output_format]()
+        printer = new_printer(output_format)
     except KeyError:
         raise ValueError(f'Unrecognized output format "{output_format}"')
     global_dict = ItemDict({
@@ -158,32 +159,20 @@ def pol(prog, input_file=None, *,
         # Other
         'filename': input_file,
         '_UNDEFINED_': _UNDEFINED_,
+        'new_printer': new_printer,
+        'new_parser': new_parser,
 
         # Modules
         're': re,
         'pd': Item(lambda: importlib.import_module('pandas')),
         'np': Item(lambda: importlib.import_module('numpy')),
+        'csv': Item(lambda: importlib.import_module('csv')),
+        'pol': Item(lambda: importlib.import_module('pol')),
 
         # Writeable
         'printer': printer,
         'parser': parser_box,
         'header': None,
-
-        # Printers
-        'AutoPrinter': AutoPrinter,
-        'AwkPrinter': AwkPrinter,
-        'CsvPrinter': CsvPrinter,
-        'MarkdownPrinter': MarkdownPrinter,
-        'JsonPrinter': JsonPrinter,
-        'ReprPrinter': ReprPrinter,
-        'StrPrinter': StrPrinter,
-
-        # Parsers
-        'AwkParser': AwkParser,
-        'CsvParser': CsvParser,
-        'CsvDialectParser': CsvDialectParser,
-        'JsonParser': JsonParser,
-        'BinaryParser': BinaryParser,
     })
 
     try:

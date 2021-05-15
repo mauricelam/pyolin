@@ -1,6 +1,7 @@
 import contextlib
 import io
 import signal
+from unittest import mock
 
 
 class ErrorWithStderr(Exception):
@@ -44,10 +45,22 @@ class timeout:
         signal.alarm(0)
 
 
+class TextIO(io.TextIOWrapper):
+    def __init__(self, **kwargs):
+        self._io = io.BytesIO()
+        super().__init__(self._io, write_through=True, **kwargs)
+
+    def getvalue(self):
+        return self._io.getvalue().decode('utf-8')
+
+    def getbytes(self):
+        return self._io.getvalue()
+
+
 @contextlib.contextmanager
 def run_capturing_output(*, errmsg=None):
-    out = io.StringIO()
-    err = io.StringIO()
+    out = TextIO()
+    err = TextIO()
     with contextlib.redirect_stdout(out):
         with contextlib.redirect_stderr(err):
             try:

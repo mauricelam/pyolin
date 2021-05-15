@@ -18,7 +18,15 @@ def debug(*args):
         print(*args, file=sys.stderr)
 
 
-_UNDEFINED_ = object()
+class Undefined:
+    def __str__(self):
+        return ''
+
+    def __repr__(self):
+        return 'Undefined()'
+
+
+_UNDEFINED_ = Undefined()
 
 
 class NoMoreRecords(StopIteration):
@@ -71,6 +79,12 @@ class StreamingSequence(collections.abc.Sequence):
 
     def __radd__(self, other):
         return StreamingSequence(itertools.chain(other, self))
+
+    def __str__(self):
+        return str(self.list)
+
+    def __repr__(self):
+        return repr(self.list)
 
 
 class ItemDict(dict):

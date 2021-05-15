@@ -189,6 +189,11 @@ class Printer:
             return [str(i) for i in range(num_columns)]
 
     def print_result(self, result, *, header=None):
+        if result is not _UNDEFINED_:
+            # Don't print undefined
+            self.print_result_internal(result, header=header)
+
+    def print_result_internal(self, result, *, header=None):
         header = header or HasHeader.get(result)
         if 'pandas' in sys.modules:
             # Re-import it only if it is already imported before. If not the result can't be a
@@ -219,34 +224,43 @@ class Printer:
 
 
 class AutoPrinter(Printer):
-    def print_result(self, result, *, header=None):
+    def print_result_internal(self, result, *, header=None):
         printer_type = 'awk'
         if isinstance(result, collections.abc.Iterable):
             if not isinstance(result, (str, Record, tuple, bytes)):
                 printer_type = 'markdown'
-        self._printer = PRINTERS[printer_type]()
-        super().print_result(result, header=header)
+        self._printer = new_printer(printer_type)
+        super().print_result_internal(result, header=header)
 
     def format_table(self, table, header):
         return self._printer.format_table(table, header)
 
 
 class AwkPrinter(Printer):
+    def __init__(self):
+        self.record_separator = '\n'
+        self.field_separator = ' '
+
     def format_table(self, table, header):
         for record in table:
-            yield ' '.join(record) + '\n'
+            yield self.field_separator.join(record) + self.record_separator
 
 
 class CsvPrinter(Printer):
-    def __init__(self, *, header=False, delimiter=',', dialect=csv.excel):
-        self.header = header
+    def __init__(self, *, print_header=False, delimiter=',', dialect=csv.excel):
+        self.print_header = print_header
         self.delimiter = delimiter
         self.dialect = dialect
 
     def format_table(self, table, header):
         output = io.StringIO()
-        self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
-        if self.header:
+        try:
+            self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
+        except csv.Error as e:
+            if 'unknown dialect' in str(e):
+                raise RuntimeError(f'Unknown dialect "{self.dialect}"') from e
+            raise RuntimeError(e) from e
+        if self.print_header:
             self.writer.writerow(header)
             yield self._pop_value(output)
         for record in table:
@@ -361,8 +375,13 @@ class ReprPrinter(Printer):
 
 
 class StrPrinter(Printer):
-    def print_result(self, result, *, header=None):
+    def print_result_internal(self, result, *, header=None):
         print(result)
+
+
+class BinaryPrinter(Printer):
+    def print_result_internal(self, result, *, header=None):
+        sys.stdout.buffer.write(result)
 
 
 PRINTERS = {
@@ -376,4 +395,9 @@ PRINTERS = {
     'json': JsonPrinter,
     'repr': ReprPrinter,
     'str': StrPrinter,
+    'binary': BinaryPrinter,
 }
+
+
+def new_printer(output_format):
+    return PRINTERS[output_format]()
