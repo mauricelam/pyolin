@@ -1,4 +1,5 @@
 import itertools
+from itertools import zip_longest
 
 from .field import Field
 from .util import StreamingSequence, cached_property
@@ -11,13 +12,14 @@ class HasHeader:
             return o.header
 
 
-class Record(tuple, HasHeader):
+class Record(tuple):
     def __new__(cls, *args, recordstr='', header=None):
-        return super().__new__(cls, tuple(Field(f) for f in args))
+        return super().__new__(
+            cls,
+            tuple(Field(f, header=h) for f, h in zip_longest(args, header or ())))
 
     def __init__(self, *args, recordstr='', header=None):
         self.str = recordstr
-        self.header = header
 
 
 class Header(Record):
@@ -26,12 +28,12 @@ class Header(Record):
 
 class RecordSequence(StreamingSequence, HasHeader):
     def __init__(self, records_iter):
-        seq1, self._seq = itertools.tee(records_iter)
+        seq1, self._seq_for_header = itertools.tee(records_iter)
         super().__init__(r for r in seq1 if not isinstance(r, Header))
 
     @cached_property
     def header(self):
-        firstrow = next(self._seq, None)
+        firstrow = next(self._seq_for_header, None)
         if isinstance(firstrow, Header):
             return firstrow
         else:

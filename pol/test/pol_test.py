@@ -501,7 +501,7 @@ Actual:
             ''')
 
     def testStreamingStdin(self):
-        with polPopen('line', extra_args=['--output_format=awk']) as proc:
+        with polPopen('parser.has_header = False; line', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.flush()
             with timeout(2):
@@ -515,6 +515,21 @@ Actual:
                     proc.stdout.readline(),
                     'Celtics Boston     49 33 0.598\n')
 
+    def testClosedStdout(self):
+        with polPopen('parser.has_header = False; line', extra_args=['--output_format=awk']) as proc:
+            proc.stdin.write('Raptors Toronto    58 24 0.707\n')
+            proc.stdin.flush()
+            with timeout(2):
+                self.assertEqual(proc.stdout.readline(), 'Raptors Toronto    58 24 0.707\n')
+            # Command line tools like `head` will close the pipe when it is done getting the data
+            # it needs. Make sure this doesn't crash
+            proc.stdout.close()
+            proc.stdin.write('Celtics Boston     49 33 0.598\n')
+            proc.stdin.close()
+            # proc.stdin.flush()
+            errmsg = proc.stderr.read()
+            self.assertEqual(errmsg, '', errmsg)
+
     def testStreamingStdinBinary(self):
         with polPopen(
                 'file[:2]',
@@ -525,7 +540,7 @@ Actual:
 
     def testStreamingSlice(self):
         with polPopen(
-                'records[:2]', extra_args=['--output_format=awk']) as proc:
+                'parser.has_header = False; records[:2]', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.write('Celtics Boston     49 33 0.598\n')
             proc.stdin.flush()
@@ -540,7 +555,7 @@ Actual:
 
     def testStreamingIndex(self):
         with polPopen(
-                'records[1].str', extra_args=['--output_format=awk']) as proc:
+                'parser.has_header = False; records[1].str', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.write('Celtics Boston     49 33 0.598\n')
             proc.stdin.flush()
@@ -640,6 +655,17 @@ Actual:
             | dir/subdir | True | 12 | 42.0 |
             ''',
             data='data_files.txt')
+
+    def testAwkHeaderDetection(self):
+        self.assertPol(
+            'record if record[1].bool',
+            '''\
+            | Path       | IsDir | Size | Score |
+            | ---------- | ----- | ---- | ----- |
+            | dir        | True  | 30   | 40.0  |
+            | dir/subdir | True  | 12   | 42.0  |
+            ''',
+            data='data_files_with_header.txt')
 
     def testFilename(self):
         self.assertPol(
@@ -887,7 +913,7 @@ Actual:
 
     def testRecordSeparatorMultipleChars(self):
         self.assertPol(
-            'record',
+            'parser.has_header=False; record',
             '''\
             | value                                    |
             | ---------------------------------------- |
@@ -1098,6 +1124,37 @@ Actual:
             data='data_grades_with_header.csv',
             input_format='csv')
 
+    def testForceHasHeader(self):
+        self.assertPol(
+            'parser.has_header = True; (r[0], r[2], r[7]) for r in records',
+            '''\
+            | Alfalfa   | 123-45-6789 | 49.0 |
+            | --------- | ----------- | ---- |
+            | Alfred    | 123-12-1234 | 48.0 |
+            | Gerty     | 567-89-0123 | 44.0 |
+            | Android   | 087-65-4321 | 47.0 |
+            | Franklin  | 234-56-2890 | 90.0 |
+            | George    | 345-67-3901 | 4.0  |
+            | Heffalump | 632-79-9439 | 40.0 |
+            ''',
+            data='data_grades_simple_csv.csv',
+            input_format='csv')
+
+    def testHeaderDetectionCsvExcel(self):
+        self.assertPol(
+            'df[["Last Name", "Address"]]',
+            '''\
+            | Last Name             | Address                          |
+            | --------------------- | -------------------------------- |
+            | John                  | 120 jefferson st.                |
+            | Jack                  | 220 hobo Av.                     |
+            | John "Da Man"         | 120 Jefferson St.                |
+            | Stephen               | 7452 Terrace "At the Plaza" road |
+            | Joan "the bone", Anne | 9th, at Terrace plc              |
+            ''',
+            data='data_addresses_with_header.csv',
+            input_format='csv_excel')
+
     def testPrintDataframeHeader(self):
         self.assertPol(
             'list(df.columns.values)',
@@ -1264,7 +1321,7 @@ Actual:
             output_format='csv')
 
     def testStreamingStdinCsv(self):
-        with polPopen('record', ['--output_format', 'csv']) as proc:
+        with polPopen('parser.has_header = False; record', ['--output_format', 'csv']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.flush()
             with timeout(2):

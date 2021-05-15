@@ -1,5 +1,11 @@
 class Field(str):
 
+    def __new__(cls, content, *, header):
+        return super().__new__(cls, content)
+
+    def __init__(self, content, *, header):
+        self.header = header
+
     @property
     def bool(self):
         if self.lower() in ('true', 't', 'y', 'yes', '1', 'on'):

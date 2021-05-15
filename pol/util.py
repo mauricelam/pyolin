@@ -1,4 +1,5 @@
 import collections.abc
+import contextlib
 import functools
 import itertools
 import os
@@ -158,3 +159,22 @@ class LazyItem(Item):
                 self._on_accessed()
             self._cached = True
         return self._val
+
+
+def peek_iter(iterator, num):
+    preview = tuple(itertools.islice(iterator, 0, num))
+    return preview, itertools.chain(preview, iterator)
+
+
+# https://bugs.python.org/issue11380#msg248579
+def clean_close_stdout_and_stderr():
+    try:
+        sys.stdout.flush()
+    finally:
+        try:
+            sys.stdout.close()
+        finally:
+            try:
+                sys.stderr.flush()
+            finally:
+                sys.stderr.close()

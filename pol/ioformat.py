@@ -13,7 +13,9 @@ import textwrap
 
 
 from .record import Record, Header, HasHeader
-from .util import debug, _UNDEFINED_
+from .util import debug, _UNDEFINED_, clean_close_stdout_and_stderr, peek_iter
+from .field import Field
+from . import header_detector
 
 
 def _gen_split(stream, delimiter):
@@ -46,26 +48,48 @@ class AbstractParser:
     def __init__(self, record_separator, field_separator):
         self.record_separator = record_separator or self.default_rs
         self.field_separator = field_separator or self.default_fs
+        self.has_header = None  # Auto detect
 
     def records(self, stream):
+        result = self.gen_records(stream)
+        has_header = self.has_header
+        if self.has_header is None:
+            # Try to automatically detect whether there is a header
+            result, result2 = itertools.tee(result)
+            preview = itertools.islice((r for r, l in result2), 0, 10)
+            has_header = header_detector.has_header(preview)
+        if has_header:
+            for i, (record, line) in enumerate(result):
+                if not i:
+                    header = Header(*record, recordstr=line)
+                    yield header
+                else:
+                    yield Record(*record, recordstr=line, header=header)
+        else:
+            yield from (Record(*record, recordstr=line) for record, line in result)
+
+    def gen_records(self, stream):
+        '''
+        Yields records in the format of (tuple, str)
+        '''
         raise NotImplemented()
 
 
 class AwkParser(AbstractParser):
-    def records(self, stream):
+    def gen_records(self, stream):
         for recordstr in _gen_split(stream, self.record_separator):
-            yield Record(*self.parserecord(recordstr), recordstr=recordstr)
-
-    def parserecord(self, recordstr):
-        return re.split(self.field_separator, recordstr)
+            yield re.split(self.field_separator, recordstr), recordstr
 
 
 class CustomSniffer(csv.Sniffer):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, force_dialect=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._force_dialect = force_dialect
         self.dialect = None
 
     def sniff(self, *args, **kwargs):
+        if self._force_dialect is not None:
+            return self._force_dialect
         if self.dialect is not None:
             return self.dialect
         self.dialect = super().sniff(*args, **kwargs)
@@ -73,6 +97,8 @@ class CustomSniffer(csv.Sniffer):
         return self.dialect
 
     def update_dialect(self, line):
+        if self._force_dialect is not None:
+            return False
         if self.dialect.doublequote != 'undecided':
             return False
         if re.search(r'[^\\]""', line):
@@ -84,55 +110,68 @@ class CustomSniffer(csv.Sniffer):
             return True
 
 
+class CsvReader:
+    def __init__(self, dialect):
+        self._dialect = dialect
+        self._current_line = None
+        self._csv_reader = csv.reader(self, dialect)
+
+    @property
+    def dialect(self):
+        return self._dialect
+
+    @dialect.setter
+    def dialect(self, dialect):
+        self._dialect = dialect
+        self._csv_reader = csv.reader(self, dialect)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return self._current_line
+
+    def read(self, line):
+        self._current_line = line
+        return next(self._csv_reader)
+
+
 class CsvParser(AbstractParser):
     default_fs = r','
 
-    def records(self, stream):
-        stream1, stream2, stream3 = itertools.tee(_gen_split(stream, self.record_separator), 3)
-        sniff_sample = '\n'.join(line for line in itertools.islice(stream3, 0, 5))
-        sniffer = CustomSniffer()
-        dialect = sniffer.sniff(sniff_sample, delimiters=self.field_separator)
-        csv_reader = csv.reader(stream2, sniffer.dialect)
-        header = None
-        for lineno, line in enumerate(stream1):
-            if sniffer.update_dialect(line):
-                csv_reader = csv.reader(
-                    stream2, sniffer.dialect, delimiter=self.field_separator)
-            fields = next(csv_reader)
-            if lineno == 0 and sniffer.has_header(sniff_sample):
-                header = Header(*fields, recordstr=line)
-                yield header
-            else:
-                yield Record(*fields, recordstr=line, header=header)
-
-
-class CsvDialectParser(AbstractParser):
-    default_fs = r','
-
-    def __init__(self, *args, dialect, **kwargs):
+    def __init__(self, *args, dialect=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.dialect = dialect
 
-    def records(self, stream):
-        # TODO: Sniff header?
-        stream1, stream2 = itertools.tee(_gen_split(stream, self.record_separator))
-        csv_reader = csv.reader(stream2, self.dialect, delimiter=self.field_separator)
-        for line, fields in zip(stream1, csv_reader):
-            yield Record(*fields, recordstr=line)
+    def gen_records(self, stream):
+        stream = _gen_split(stream, self.record_separator)
+        sniffer = None
+        if self.dialect is None:
+            preview, stream = peek_iter(stream, 5)
+            sniff_sample = self.record_separator.join(preview)
+            sniffer = CustomSniffer(self.dialect)
+            self.dialect = sniffer.sniff(sniff_sample, delimiters=self.field_separator)
+        csv_reader = CsvReader(self.dialect)
+        for line in stream:
+            if sniffer and sniffer.update_dialect(line):
+                csv_reader.dialect = sniffer.dialect
+            fields = csv_reader.read(line)
+            yield fields, line
 
 
-class JsonParser:
+class JsonParser(AbstractParser):
     binary = False
 
-    def records(self, stream):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.has_header = True
+
+    def gen_records(self, stream):
         records = json.load(stream)
-        debug('records', records)
-        header = None
         for i, r in enumerate(records):
             if not i:
-                header = Header(*r.keys(), recordstr='')
-                yield header
-            yield Record(*r.values(), recordstr=json.dumps(r), header=header)
+                yield r.keys(), ''
+            yield r.values(), json.dumps(r)
 
 
 class BinaryParser:
@@ -145,10 +184,10 @@ class BinaryParser:
 PARSERS = {
     'awk': AwkParser,
     'csv': CsvParser,
-    'csv_excel': lambda rs, fs: CsvDialectParser(rs, fs, dialect=csv.excel),
-    'csv_unix': lambda rs, fs: CsvDialectParser(rs, fs, dialect=csv.unix_dialect),
+    'csv_excel': lambda rs, fs: CsvParser(rs, fs, dialect=csv.excel),
+    'csv_unix': lambda rs, fs: CsvParser(rs, fs, dialect=csv.unix_dialect),
     'tsv': lambda rs, fs: CsvParser(rs, '\t'),
-    'json': lambda rs, fs: JsonParser(),
+    'json': JsonParser,
     'binary': lambda rs, fs: BinaryParser(),
 }
 
@@ -182,16 +221,33 @@ class Printer:
         else:
             return [self.format_value(record)]
 
-    def _generate_header(self, num_columns):
-        if num_columns == 1:
-            return ['value']
-        else:
-            return [str(i) for i in range(num_columns)]
+    def _generate_header(self, first_column):
+        header = []
+        for i, c in enumerate(first_column):
+            h = None
+            if isinstance(c, Field):
+                h = c.header
+            if not h:
+                if len(first_column) == 1:
+                    h = 'value'
+                else:
+                    h = str(i)
+            header.append(h)
+        return header
+
+        # if len(first_column) == 1:
+        #     return ['value']
+        # else:
+        #     return [str(i) for i in range(len(first_column))]
 
     def print_result(self, result, *, header=None):
-        if result is not _UNDEFINED_:
-            # Don't print undefined
-            self.print_result_internal(result, header=header)
+        try:
+            if result is not _UNDEFINED_:
+                # Don't print undefined
+                self.print_result_internal(result, header=header)
+        except BrokenPipeError:
+            clean_close_stdout_and_stderr()
+            sys.exit(141)
 
     def print_result_internal(self, result, *, header=None):
         header = header or HasHeader.get(result)
@@ -209,12 +265,11 @@ class Printer:
                 result = (self.format_record(r)
                           for r in result if r is not _UNDEFINED_)
                 result, result_tee = itertools.tee(result)
-                num_columns = len(list(next(result_tee, [])))
-                header = header or self._generate_header(num_columns)
+                first_column = list(next(result_tee, []))
+                header = header or self._generate_header(first_column)
             else:
                 result = (self.format_record(result),)
-                num_columns = len(result[0])
-                header = header or self._generate_header(num_columns)
+                header = header or self._generate_header(result[0])
         else:
             header = header or ['value']
             result = (self.format_record(result),)

@@ -13,7 +13,7 @@ from hashbang import command, Argument
 from .util import (debug, BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_,
                    NoMoreRecords)
 from .ioformat import *
-from .record import Record, HasHeader, Header, RecordSequence
+from .record import Record, Header, RecordSequence
 from .parser import Prog
 
 
