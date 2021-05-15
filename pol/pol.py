@@ -10,7 +10,8 @@ import textwrap
 from contextlib import contextmanager
 from hashbang import command, Argument
 
-from .util import debug, BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_, NoMoreRecords
+from .util import (debug, BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_,
+                   NoMoreRecords)
 from .ioformat import *
 from .record import Record, HasHeader, Header, RecordSequence
 from .parser import Prog
@@ -73,7 +74,8 @@ def pol(prog, input_file=None, *,
 
     In pol, the input file is treated as a table, which consists of many
     records (lines). Each record is then consisted of many fields (columns).
-    The separator for records and fields are configurable. (Using what???)
+    The separator for records and fields are configurable through the
+    --record_separator and --field_separator options.
 
     Available variables:
       - Record scoped:
@@ -141,24 +143,33 @@ def pol(prog, input_file=None, *,
     except KeyError:
         raise ValueError(f'Unrecognized output format "{output_format}"')
     global_dict = ItemDict({
-        'lines': table_scoped(lambda: StreamingSequence(r.str for r in record_seq)),
-        'records': table_scoped(lambda: record_seq),
-        'filename': input_file,
-        'file': table_scoped(lambda: get_contents(input_file)),
-        'contents': table_scoped(lambda: get_contents(input_file)),
-        'df': table_scoped(get_dataframe),
+        # Record scoped
         'record': record_var,
         'fields': record_var,
         'line': Item(lambda: record_var().str),
-        'printer': printer,
-        'parser': parser_box,
+
+        # Table scoped
+        'lines': table_scoped(lambda: StreamingSequence(r.str for r in record_seq)),
+        'records': table_scoped(lambda: record_seq),
+        'file': table_scoped(lambda: get_contents(input_file)),
+        'contents': table_scoped(lambda: get_contents(input_file)),
+        'df': table_scoped(get_dataframe),
+
+        # Other
+        'filename': input_file,
+        '_UNDEFINED_': _UNDEFINED_,
+
+        # Modules
         're': re,
         'pd': Item(lambda: importlib.import_module('pandas')),
         'np': Item(lambda: importlib.import_module('numpy')),
-        'Header': Header,
-        '_UNDEFINED_': _UNDEFINED_,
+
+        # Writeable
+        'printer': printer,
+        'parser': parser_box,
         'header': None,
 
+        # Printers
         'AutoPrinter': AutoPrinter,
         'AwkPrinter': AwkPrinter,
         'CsvPrinter': CsvPrinter,
@@ -167,11 +178,12 @@ def pol(prog, input_file=None, *,
         'ReprPrinter': ReprPrinter,
         'StrPrinter': StrPrinter,
 
+        # Parsers
         'AwkParser': AwkParser,
         'CsvParser': CsvParser,
         'CsvDialectParser': CsvDialectParser,
         'JsonParser': JsonParser,
-        'binary': BinaryParser,
+        'BinaryParser': BinaryParser,
     })
 
     try:

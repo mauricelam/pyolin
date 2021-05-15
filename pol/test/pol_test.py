@@ -1586,3 +1586,9 @@ Actual:
             str(context.exception.__cause__.__cause__))
 
     # Support windows
+    # Change OFS and ORS
+    # Binary printer
+    # Test Binary stdin
+    # Implicit csv import
+    # CSV dialect error checking
+    # pol 'records if False' --output_format=repr

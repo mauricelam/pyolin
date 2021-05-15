@@ -191,6 +191,8 @@ class Printer:
     def print_result(self, result, *, header=None):
         header = header or HasHeader.get(result)
         if 'pandas' in sys.modules:
+            # Re-import it only if it is already imported before. If not the result can't be a
+            # dataframe.
             import pandas as pd
         else:
             pd = None
