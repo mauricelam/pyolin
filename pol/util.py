@@ -4,6 +4,7 @@ import functools
 import itertools
 import os
 import sys
+import importlib
 
 
 def cache(func):
@@ -108,6 +109,12 @@ class ItemDict(dict):
             pass
         debug(f'dict setting {key}={value}')
         return super().__setitem__(key, value)
+
+    def __missing__(self, key):
+        try:
+            return importlib.import_module(key)
+        except ModuleNotFoundError:
+            raise KeyError(key)
 
 
 class Item:

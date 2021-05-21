@@ -161,6 +161,7 @@ def pol(prog, input_file=None, *,
         '_UNDEFINED_': _UNDEFINED_,
         'new_printer': new_printer,
         'new_parser': new_parser,
+        'BEGIN': True,
 
         # Modules
         're': re,
@@ -181,6 +182,7 @@ def pol(prog, input_file=None, *,
         pass
     else:
         if scope == 'record':
+            global_dict['BEGIN'] = False
             result = itertools.chain((result,), (prog.exec(global_dict) for _ in record_var))
 
         printer = global_dict['printer']

@@ -612,7 +612,7 @@ Actual:
 
     def testModuleImport(self):
         self.assertPol(
-            'import fnmatch; record[0] if fnmatch.fnmatch(record[0], "*.txt")',
+            'record[0] if fnmatch.fnmatch(record[0], "*.txt")',
             '''\
             | value                  |
             | ---------------------- |
@@ -704,7 +704,7 @@ Actual:
 
     def testBase64(self):
         self.assertPol(
-            'import base64; base64.b64encode(fields[0].bytes)',
+            'base64.b64encode(fields[0].bytes)',
             '''\
             | value        |
             | ------------ |
@@ -717,7 +717,7 @@ Actual:
 
     def testUrlQuote(self):
         self.assertPol(
-            'import urllib; urllib.parse.quote(line)',
+            'urllib.parse.quote(line)',
             '''\
             | value                                          |
             | ---------------------------------------------- |
@@ -1217,7 +1217,7 @@ Actual:
 
     def testStackTraceCleaning(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('import urllib; urllib.parse.quote(12345)')
+            run_pol('urllib.parse.quote(12345)')
         formatted = context.exception.__cause__.formatted_tb()
         self.assertEqual(5, len(formatted), pformat(formatted))
         self.assertIn('Traceback (most recent call last)', formatted[0])
@@ -1661,7 +1661,7 @@ Actual:
 
     def testBinaryInputPickle(self):
         self.assertPol(
-            'import pickle; pickle.loads(file)',
+            'pickle.loads(file)',
             '''\
             hello world
             ''',
@@ -1765,4 +1765,43 @@ Actual:
             ''',
             output_format='str')
 
-    # Support windows
+    def testNameError(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_pol('idontknowwhatisthis + 1')
+        self.assertEqual(
+            "name 'idontknowwhatisthis' is not defined",
+            str(context.exception.__cause__.__cause__))
+
+    def testBegin(self):
+        self.assertPol(
+            'if BEGIN: mysum = 0\n'
+            'mysum += record[2]\n'
+            'mysum',
+            '''\
+            | value |
+            | ----- |
+            | 60    |
+            | 118   |
+            | 169   |
+            | 218   |
+            | 266   |
+            ''')
+
+    def testTrailingNewline(self):
+        self.assertPol(
+            'records\n',
+            '''\
+            | 0       | 1            | 2  | 3  | 4     |
+            | ------- | ------------ | -- | -- | ----- |
+            | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
+            | Raptors | Toronto      | 58 | 24 | 0.707 |
+            | 76ers   | Philadelphia | 51 | 31 | 0.622 |
+            | Celtics | Boston       | 49 | 33 | 0.598 |
+            | Pacers  | Indiana      | 48 | 34 | 0.585 |
+            ''')
+
+    # TODOs:
+    # If statement precedence is unintuitive for single-line use (despite being correct from Python's perspective)
+    # Multi-line statement syntax
+    # Bash / Zsh autocomplete integration
+    # Import-able pol to make it usable with other tools
