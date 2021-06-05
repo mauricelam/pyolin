@@ -1,5 +1,6 @@
 import contextlib
 import os
+from pol.parser import UserError
 from pol import pol
 from pol.util import _UNDEFINED_
 from pprint import pformat
@@ -549,7 +550,7 @@ Actual:
                 'file[:2]',
                 extra_args=['--input_format=binary', '--output_format=binary'],
                 universal_newlines=False) as proc:
-            stdout, stderr = proc.communicate(b'\x30\x62\x43\x00')
+            stdout, _ = proc.communicate(b'\x30\x62\x43\x00')  # type: ignore
             self.assertEqual(stdout, b'\x30\x62')
 
     def testStreamingSlice(self):
@@ -710,7 +711,7 @@ Actual:
             | Bucks Milwaukee    60 22 0.732 |
             ''')
 
-    def testContains(self):
+    def testInOperator(self):
         self.assertPol(
             '"Raptors Toronto    58 24 0.707" in lines',
             '''\
@@ -1233,6 +1234,7 @@ Actual:
     def testStackTraceCleaning(self):
         with self.assertRaises(ErrorWithStderr) as context:
             run_cli('urllib.parse.quote(12345)')
+        assert isinstance(context.exception.__cause__, UserError)
         formatted = context.exception.__cause__.formatted_tb()
         self.assertEqual(5, len(formatted), pformat(formatted))
         self.assertIn('Traceback (most recent call last)', formatted[0])
@@ -1272,7 +1274,7 @@ Actual:
             ''',
             output_format='csv')
 
-    def testCsvOutputFormatUnix(self):
+    def testCsvOutputInvalidDialect(self):
         with self.assertRaises(ErrorWithStderr) as context:
             run_cli('printer.dialect = "invalid"; records', output_format='csv')
         self.assertEqual(
@@ -1337,8 +1339,10 @@ Actual:
 
     def testCsvOutputWithHeaderFunction(self):
         def func():
-            printer.print_header = True
-            return df[["Last name", "SSN", "Final"]]
+            # pylint: disable=undefined-variable
+            printer.print_header = True  # type: ignore
+            return df[["Last name", "SSN", "Final"]]  # type: ignore
+            # pylint: enable=undefined-variable
 
         self.assertPol(
             func,
@@ -1680,6 +1684,7 @@ Actual:
     def testRaiseStopIteration(self):
         with self.assertRaises(ErrorWithStderr) as context:
             run_cli('raise StopIteration(); None')
+        assert isinstance(context.exception.__cause__, UserError)
         formatted = context.exception.__cause__.formatted_tb()
         self.assertEqual(3, len(formatted), pformat(formatted))
         self.assertIn('Traceback (most recent call last)', formatted[0])
@@ -1843,7 +1848,9 @@ Actual:
 
     def testExecuteFunction(self):
         def get_records():
-            return records
+            # pylint: disable=undefined-variable
+            return records  # type: ignore
+            # pylint: enable=undefined-variable
         self.assertRunPol(
             get_records,
             [
@@ -1856,7 +1863,9 @@ Actual:
 
     def testExecuteFunctionRecordScoped(self):
         def get_records():
-            return record[0]
+            # pylint: disable=undefined-variable
+            return record[0]  # type: ignore
+            # pylint: enable=undefined-variable
         self.assertRunPol(
             get_records,
             ['Bucks', 'Raptors', '76ers', 'Celtics', 'Pacers'])

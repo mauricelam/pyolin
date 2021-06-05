@@ -5,6 +5,7 @@ import itertools
 import os
 import sys
 import importlib
+from typing import Iterable, Iterator
 
 
 def cache(func):
@@ -54,7 +55,7 @@ class StreamingSequence(collections.abc.Sequence):
             self._list = list(iter(self))
         return self._list
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         if self._list:
             return iter(self._list)
         # Tee the iterator so every call to iter starts from the beginning
@@ -130,7 +131,7 @@ class Item:
 
 class SettableItem(Item):
     def set(self, value):
-        raise NotImplemented()
+        raise NotImplementedError()
 
 
 class BoxedItem(SettableItem):

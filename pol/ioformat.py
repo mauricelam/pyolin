@@ -1,4 +1,6 @@
+import abc
 import collections
+import collections.abc
 import csv
 from math import floor
 import io
@@ -10,6 +12,7 @@ import re
 import shutil
 import sys
 import textwrap
+from typing import Callable, Optional, Type, Union
 
 
 from .record import Record, Header, HasHeader
@@ -40,12 +43,12 @@ def _gen_split(stream, delimiter):
             buf = ''
 
 
-class AbstractParser:
+class AbstractParser(abc.ABC):
     default_fs = r'[ \t]+'
     default_rs = r'\n'
     binary = False
 
-    def __init__(self, record_separator, field_separator):
+    def __init__(self, record_separator: str, field_separator: str):
         self.record_separator = record_separator or self.default_rs
         self.field_separator = field_separator or self.default_fs
         self.has_header = None  # Auto detect
@@ -59,6 +62,7 @@ class AbstractParser:
             preview = itertools.islice((r for r, l in result2), 0, 10)
             has_header = header_detector.has_header(preview)
         if has_header:
+            header = None
             for i, (record, line) in enumerate(result):
                 if not i:
                     header = Header(*record, recordstr=line)
@@ -68,11 +72,12 @@ class AbstractParser:
         else:
             yield from (Record(*record, recordstr=line) for record, line in result)
 
+    @abc.abstractmethod
     def gen_records(self, stream):
         '''
         Yields records in the format of (tuple, str)
         '''
-        raise NotImplemented()
+        raise NotImplementedError()
 
 
 class AwkParser(AbstractParser):
@@ -85,7 +90,8 @@ class CustomSniffer(csv.Sniffer):
     def __init__(self, force_dialect=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._force_dialect = force_dialect
-        self.dialect = None
+        self.dialect: Optional[Union[csv.Dialect, Type[csv.Dialect]]] = None
+        self.dialect_doublequote_decided = False
 
     def sniff(self, *args, **kwargs):
         if self._force_dialect is not None:
@@ -93,13 +99,13 @@ class CustomSniffer(csv.Sniffer):
         if self.dialect is not None:
             return self.dialect
         self.dialect = super().sniff(*args, **kwargs)
-        self.dialect.doublequote = 'undecided'  # Truthy-value
+        self.dialect.doublequote = True
         return self.dialect
 
     def update_dialect(self, line):
         if self._force_dialect is not None:
             return False
-        if self.dialect.doublequote != 'undecided':
+        if self.dialect_doublequote_decided:
             return False
         if re.search(r'[^\\]""', line):
             self.dialect.doublequote = True
@@ -111,24 +117,25 @@ class CustomSniffer(csv.Sniffer):
 
 
 class CsvReader:
-    def __init__(self, dialect):
+    def __init__(self, dialect: Union[str, csv.Dialect, Type[csv.Dialect]]):
         self._dialect = dialect
         self._current_line = None
         self._csv_reader = csv.reader(self, dialect)
 
     @property
-    def dialect(self):
+    def dialect(self) -> Union[str, csv.Dialect, Type[csv.Dialect]]:
         return self._dialect
 
     @dialect.setter
-    def dialect(self, dialect):
+    def dialect(self, dialect: Union[str, csv.Dialect, Type[csv.Dialect]]):
         self._dialect = dialect
         self._csv_reader = csv.reader(self, dialect)
 
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> str:
+        assert self._current_line is not None
         return self._current_line
 
     def read(self, line):
@@ -139,7 +146,7 @@ class CsvReader:
 class CsvParser(AbstractParser):
     default_fs = r','
 
-    def __init__(self, *args, dialect=None, **kwargs):
+    def __init__(self, *args, dialect: Union[str, csv.Dialect, Type[csv.Dialect]]=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.dialect = dialect
 
@@ -154,7 +161,7 @@ class CsvParser(AbstractParser):
         csv_reader = CsvReader(self.dialect)
         for line in stream:
             if sniffer and sniffer.update_dialect(line):
-                csv_reader.dialect = sniffer.dialect
+                csv_reader.dialect = sniffer.dialect  # type: ignore
             fields = csv_reader.read(line)
             yield fields, line
 
@@ -192,16 +199,17 @@ PARSERS = {
 }
 
 
-def create_parser(input_format, record_separator, field_separator):
+def create_parser(input_format, record_separator, field_separator) -> Callable[[], AbstractParser]:
     try:
         return PARSERS[input_format](record_separator, field_separator)
     except KeyError as e:
         raise ValueError(f'Unknown input format {input_format}') from e
 
 
-class Printer:
+class Printer(abc.ABC):
+    @abc.abstractmethod
     def format_table(self, table, header):
-        raise NotImplemented()
+        raise NotImplementedError()
 
     def format_value(self, value):
         if isinstance(value, str):
@@ -423,12 +431,18 @@ class ReprPrinter(Printer):
     def gen_result(self, result, *, header=None):
         yield repr(result) + '\n'
 
+    def format_table(self, table, header):
+        raise NotImplementedError()
+
 
 class StrPrinter(Printer):
     def gen_result(self, result, *, header=None):
         result = str(result)
         if result:
             yield result + '\n'
+
+    def format_table(self, table, header):
+        raise NotImplementedError()
 
 
 class BinaryPrinter(Printer):
@@ -442,6 +456,9 @@ class BinaryPrinter(Printer):
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
             sys.exit(141)
+
+    def format_table(self, table, header):
+        raise NotImplementedError()
 
 
 PRINTERS = {
@@ -459,5 +476,5 @@ PRINTERS = {
 }
 
 
-def new_printer(output_format):
+def new_printer(output_format: str) -> Callable[[], Printer]:
     return PRINTERS[output_format]()

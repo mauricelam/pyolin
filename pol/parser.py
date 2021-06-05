@@ -12,7 +12,7 @@ def _split_last_statement(tokens, prog):
     def _line_pos_to_pos(linepos):
         line, pos = linepos
         offset = 0
-        for i in range(1, line):
+        for _ in range(1, line):
             offset = prog.index('\n', offset) + 1
         return pos + offset
 
@@ -53,6 +53,7 @@ def _replace_with_newline(tokens, pos):
         tok.start,
         tok.end,
         tok.line)
+    line_offset = 0
     for i, tok2 in enumerate(tokens[pos + 1:]):
         if i == 0:
             line_offset = tok2.start[1]
@@ -113,10 +114,12 @@ def _parse(prog):
 class UserError(RuntimeError):
 
     def formatted_tb(self):
+        cause = self.__cause__
+        assert isinstance(cause, BaseException)
         return traceback.format_exception(
-            self.__cause__,
-            self.__cause__,
-            self.__cause__.__traceback__.tb_next)
+            cause.__class__,
+            cause,
+            cause.__traceback__.tb_next)  # pylint: disable=no-member
 
     def __str__(self):
         return ''.join(self.formatted_tb()).rstrip('\n')
@@ -128,10 +131,10 @@ class Prog:
             self._exec = compile('', filename='pol_user_prog.py', mode='exec')
             self._eval = prog.__code__
         else:
-            self._exec, self._eval = _parse(prog)
-            debug('Resulting AST', ast.dump(self._exec), ast.dump(self._eval))
-            self._exec = compile(self._exec, filename='pol_user_prog.py', mode='exec')
-            self._eval = compile(self._eval, filename='pol_user_prog.py', mode='eval')
+            exec_code, eval_code = _parse(prog)
+            debug('Resulting AST', ast.dump(exec_code), ast.dump(eval_code))
+            self._exec = compile(exec_code, filename='pol_user_prog.py', mode='exec')
+            self._eval = compile(eval_code, filename='pol_user_prog.py', mode='eval')
 
     def exec(self, globals):
         try:

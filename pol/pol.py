@@ -79,7 +79,7 @@ def _execute_internal(prog, input_file=None, *,
         import pandas as pd
         header = [f.str for f in record_seq.header] if record_seq.header else None
         df = pd.DataFrame(record_seq, columns=header)
-        return df.apply(pd.to_numeric, errors='ignore')
+        return df.apply(pd.to_numeric, errors='ignore')  # type: ignore
 
     scope = 'undecided'
 

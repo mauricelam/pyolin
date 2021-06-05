@@ -1,3 +1,4 @@
+import abc
 import itertools
 from itertools import zip_longest
 
@@ -10,6 +11,10 @@ class HasHeader:
     def get(o):
         if isinstance(o, HasHeader):
             return o.header
+
+    @abc.abstractproperty
+    def header(self):
+        raise NotImplementedError()
 
 
 class Record(tuple):
