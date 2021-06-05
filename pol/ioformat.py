@@ -235,21 +235,17 @@ class Printer:
             header.append(h)
         return header
 
-        # if len(first_column) == 1:
-        #     return ['value']
-        # else:
-        #     return [str(i) for i in range(len(first_column))]
-
     def print_result(self, result, *, header=None):
         try:
-            if result is not _UNDEFINED_:
-                # Don't print undefined
-                self.print_result_internal(result, header=header)
+            for line in self.gen_result(result, header=header):
+                print(line, flush=True, end='')
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
             sys.exit(141)
 
-    def print_result_internal(self, result, *, header=None):
+    def gen_result(self, result, *, header=None):
+        if result is _UNDEFINED_:
+            return
         header = header or HasHeader.get(result)
         if 'pandas' in sys.modules:
             # Re-import it only if it is already imported before. If not the result can't be a
@@ -259,7 +255,7 @@ class Printer:
             pd = None
         if pd and isinstance(result, pd.DataFrame):
             header = header or [str(i) for i in result.columns]
-            result = (self.format_record(row) for i, row in result.iterrows())
+            result = (self.format_record(row) for _, row in result.iterrows())
         elif isinstance(result, collections.abc.Iterable):
             if not isinstance(result, (str, Record, tuple, bytes)):
                 result = (self.format_record(r)
@@ -274,18 +270,17 @@ class Printer:
             header = header or ['value']
             result = (self.format_record(result),)
 
-        for line in self.format_table(result, header):
-            print(line, flush=True, end='')
+        yield from self.format_table(result, header)
 
 
 class AutoPrinter(Printer):
-    def print_result_internal(self, result, *, header=None):
+    def gen_result(self, result, *, header=None):
         printer_type = 'awk'
         if isinstance(result, collections.abc.Iterable):
             if not isinstance(result, (str, Record, tuple, bytes)):
                 printer_type = 'markdown'
         self._printer = new_printer(printer_type)
-        super().print_result_internal(result, header=header)
+        yield from super().gen_result(result, header=header)
 
     def format_table(self, table, header):
         return self._printer.format_table(table, header)
@@ -425,18 +420,28 @@ class JsonPrinter(Printer):
 
 
 class ReprPrinter(Printer):
-    def print_result(self, result, *, header=None):
-        print(repr(result))
+    def gen_result(self, result, *, header=None):
+        yield repr(result) + '\n'
 
 
 class StrPrinter(Printer):
-    def print_result_internal(self, result, *, header=None):
-        print(result)
+    def gen_result(self, result, *, header=None):
+        result = str(result)
+        if result:
+            yield result + '\n'
 
 
 class BinaryPrinter(Printer):
-    def print_result_internal(self, result, *, header=None):
-        sys.stdout.buffer.write(result)
+    def gen_result(self, result, *, header=None):
+        yield bytes(result)
+
+    def print_result(self, result, *, header=None):
+        try:
+            for line in self.gen_result(result, header=header):
+                sys.stdout.buffer.write(line)
+        except BrokenPipeError:
+            clean_close_stdout_and_stderr()
+            sys.exit(141)
 
 
 PRINTERS = {

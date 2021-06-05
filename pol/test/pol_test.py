@@ -1,6 +1,7 @@
 import contextlib
 import os
 from pol import pol
+from pol.util import _UNDEFINED_
 from pprint import pformat
 import subprocess
 import sys
@@ -15,10 +16,14 @@ def _test_file(file):
     return os.path.join(os.path.dirname(__file__), file)
 
 
-def run_pol(prog, *, data='data_nba.txt', **extra_args):
+def run_cli(prog, *, data='data_nba.txt', **extra_args):
     with run_capturing_output(errmsg=f'Prog: {prog}') as output:
-        pol.pol(prog, _test_file(data), **extra_args)
+        pol._command_line(prog, _test_file(data), **extra_args)
         return output
+
+
+def run_pol(prog, *, data='data_nba.txt', **extra_args):
+    return pol.run(prog, _test_file(data), **extra_args)
 
 
 @contextlib.contextmanager
@@ -37,14 +42,13 @@ def polPopen(prog, extra_args=[], universal_newlines=True, **kwargs):
 class PolTest(unittest.TestCase):
 
     maxDiff = None
-    longMessage = False
+    longMessage = True
 
-    def assertPol(self, prog, expected_output, *, data='data_nba.txt', repr=False, **kwargs):
-        actual = run_pol(prog, data=data, **kwargs)
-        if isinstance(expected_output, str):
-            expected = textwrap.dedent(expected_output)
+    def _myassert(self, actual, expected, prog, data):
+        if isinstance(expected, str):
+            expected = textwrap.dedent(expected)
             self.assertEqual(
-                actual.getvalue(),
+                actual,
                 expected,
                 msg=f'''\
 Prog: pol \'{prog}\' {_test_file(data)}
@@ -53,13 +57,12 @@ Expected:
 ---
 
 Actual:
-{textwrap.indent(actual.getvalue(), '    ')}
+{textwrap.indent(actual, '    ')}
 ---
 ''')
         else:
-            expected = expected_output
             self.assertEqual(
-                actual.getbytes(),
+                actual,
                 expected,
                 msg=f'''\
 Prog: pol \'{prog}\' {_test_file(data)}
@@ -68,9 +71,20 @@ Expected:
 ---
 
 Actual:
-    {actual.getbytes()!r}
+    {actual!r}
 ---
 ''')
+
+    def assertRunPol(self, prog, expected, *, data='data_nba.txt', repr=False, **kwargs):
+        actual = run_pol(prog, data=data, **kwargs)
+        self.assertEqual(actual, expected)
+
+    def assertPol(self, prog, expected, *, data='data_nba.txt', repr=False, **kwargs):
+        actual = run_cli(prog, data=data, **kwargs)
+        if isinstance(expected, str):
+            self._myassert(actual.getvalue(), expected, prog, data)
+        else:
+            self._myassert(actual.getbytes(), expected, prog, data)
 
     def testLines(self):
         self.assertPol(
@@ -555,7 +569,8 @@ Actual:
 
     def testStreamingIndex(self):
         with polPopen(
-                'parser.has_header = False; records[1].str', extra_args=['--output_format=awk']) as proc:
+                'parser.has_header = False; records[1].str',
+                extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.write('Celtics Boston     49 33 0.598\n')
             proc.stdin.flush()
@@ -1089,7 +1104,7 @@ Actual:
 
     def testSyntaxError(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('a..x')
+            run_cli('a..x')
         self.assertEqual(
             textwrap.dedent('''\
                 Invalid syntax:
@@ -1099,7 +1114,7 @@ Actual:
 
     def testSyntaxErrorInStatement(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('a..x; a+1')
+            run_cli('a..x; a+1')
         self.assertEqual(
             textwrap.dedent('''\
                 Invalid syntax:
@@ -1186,14 +1201,14 @@ Actual:
 
     def testAccessRecordAndTable(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('a = record[0]; b = records; b')
+            run_cli('a = record[0]; b = records; b')
         self.assertEqual(
             'Cannot access both record scoped and table scoped variables',
             str(context.exception.__cause__.__cause__))
 
     def testAccessTableAndRecord(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('a = records; b = record[0]; b')
+            run_cli('a = records; b = record[0]; b')
         self.assertEqual(
             'Cannot access both record scoped and table scoped variables',
             str(context.exception.__cause__.__cause__))
@@ -1217,7 +1232,7 @@ Actual:
 
     def testStackTraceCleaning(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('urllib.parse.quote(12345)')
+            run_cli('urllib.parse.quote(12345)')
         formatted = context.exception.__cause__.formatted_tb()
         self.assertEqual(5, len(formatted), pformat(formatted))
         self.assertIn('Traceback (most recent call last)', formatted[0])
@@ -1228,7 +1243,7 @@ Actual:
 
     def testInvalidOutputFormat(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('1+1', output_format='invalid')
+            run_cli('1+1', output_format='invalid')
         self.assertEqual(
             'Unrecognized output format "invalid"',
             str(context.exception.__cause__))
@@ -1259,7 +1274,7 @@ Actual:
 
     def testCsvOutputFormatUnix(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('printer.dialect = "invalid"; records', output_format='csv')
+            run_cli('printer.dialect = "invalid"; records', output_format='csv')
         self.assertEqual(
             'Unknown dialect "invalid"',
             str(context.exception.__cause__))
@@ -1306,6 +1321,27 @@ Actual:
     def testCsvOutputWithHeader(self):
         self.assertPol(
             'printer.print_header = True; df[["Last name", "SSN", "Final"]]',
+            '''\
+            Last name,SSN,Final\r
+            Alfalfa,123-45-6789,49\r
+            Alfred,123-12-1234,48\r
+            Gerty,567-89-0123,44\r
+            Android,087-65-4321,47\r
+            Franklin,234-56-2890,90\r
+            George,345-67-3901,4\r
+            Heffalump,632-79-9439,40\r
+            ''',
+            data='data_grades_with_header.csv',
+            input_format='csv',
+            output_format='csv')
+
+    def testCsvOutputWithHeaderFunction(self):
+        def func():
+            printer.print_header = True
+            return df[["Last name", "SSN", "Final"]]
+
+        self.assertPol(
+            func,
             '''\
             Last name,SSN,Final\r
             Alfalfa,123-45-6789,49\r
@@ -1404,7 +1440,7 @@ Actual:
 
     def testLastStatement(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('1+1;pass')
+            run_cli('1+1;pass')
         self.assertEqual(
             textwrap.dedent('''\
             Cannot evaluate value from statement:
@@ -1636,14 +1672,14 @@ Actual:
 
     def testPrinterNone(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('printer = None; 123')
+            run_cli('printer = None; 123')
         self.assertEqual(
             'printer must be an instance of Printer. Found "None" instead',
             str(context.exception.__cause__))
 
     def testRaiseStopIteration(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('raise StopIteration(); None')
+            run_cli('raise StopIteration(); None')
         formatted = context.exception.__cause__.formatted_tb()
         self.assertEqual(3, len(formatted), pformat(formatted))
         self.assertIn('Traceback (most recent call last)', formatted[0])
@@ -1677,7 +1713,7 @@ Actual:
 
     def testBinaryInputAccessRecords(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('records', input_format='binary', data='data_pickle')
+            run_cli('records', input_format='binary', data='data_pickle')
         self.assertEqual(
             'Record based attributes are not supported in binary input mode',
             str(context.exception.__cause__))
@@ -1739,7 +1775,7 @@ Actual:
 
     def testSetParserRecord(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('a = records[0]; parser = 123; 123')
+            run_cli('a = records[0]; parser = 123; 123')
         self.assertEqual(
             'Cannot set parser after it has been used',
             str(context.exception.__cause__.__cause__))
@@ -1749,6 +1785,11 @@ Actual:
             'records if False',
             '''\
             ''')
+
+    def testGenRecordsIfUndefined(self):
+        self.assertRunPol(
+            'records if False',
+            _UNDEFINED_)
 
     def testUndefinedRepr(self):
         self.assertPol(
@@ -1767,24 +1808,24 @@ Actual:
 
     def testNameError(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_pol('idontknowwhatisthis + 1')
+            run_cli('idontknowwhatisthis + 1')
         self.assertEqual(
             "name 'idontknowwhatisthis' is not defined",
             str(context.exception.__cause__.__cause__))
 
     def testBegin(self):
         self.assertPol(
-            'if BEGIN: mysum = 0\n'
+            'if BEGIN: mysum = 0; header = ("sum", "value")\n'
             'mysum += record[2]\n'
-            'mysum',
+            'mysum, record[2]',
             '''\
-            | value |
-            | ----- |
-            | 60    |
-            | 118   |
-            | 169   |
-            | 218   |
-            | 266   |
+            | sum | value |
+            | --- | ----- |
+            | 60  | 60    |
+            | 118 | 58    |
+            | 169 | 51    |
+            | 218 | 49    |
+            | 266 | 48    |
             ''')
 
     def testTrailingNewline(self):
@@ -1800,8 +1841,48 @@ Actual:
             | Pacers  | Indiana      | 48 | 34 | 0.585 |
             ''')
 
+    def testExecuteFunction(self):
+        def get_records():
+            return records
+        self.assertRunPol(
+            get_records,
+            [
+                ('Bucks', 'Milwaukee', 60, 22, 0.732),
+                ('Raptors', 'Toronto', 58, 24, 0.707),
+                ('76ers', 'Philadelphia', 51, 31, 0.622),
+                ('Celtics', 'Boston', 49, 33, 0.598),
+                ('Pacers', 'Indiana', 48, 34, 0.585),
+            ])
+
+    def testExecuteFunctionRecordScoped(self):
+        def get_records():
+            return record[0]
+        self.assertRunPol(
+            get_records,
+            ['Bucks', 'Raptors', '76ers', 'Celtics', 'Pacers'])
+
+    def testDoubleSemiColon(self):
+        self.assertPol(
+            'record = 1; record += 1;; record += 1; record + 1',
+            '''\
+            4
+            ''')
+
+    def testIfBeginDoubleSemiColon(self):
+        self.assertPol(
+            'if BEGIN: sum = 0;; sum += record[2]; sum, record[2]',
+            '''\
+            | 0   | 1  |
+            | --- | -- |
+            | 60  | 60 |
+            | 118 | 58 |
+            | 169 | 51 |
+            | 218 | 49 |
+            | 266 | 48 |
+            ''')
+
+    def testUndefinedIsFalse(self):
+        self.assertRunPol('bool(_UNDEFINED_)', False)
+
     # TODOs:
-    # If statement precedence is unintuitive for single-line use (despite being correct from Python's perspective)
-    # Multi-line statement syntax
     # Bash / Zsh autocomplete integration
-    # Import-able pol to make it usable with other tools

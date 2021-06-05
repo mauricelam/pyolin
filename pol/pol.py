@@ -1,11 +1,9 @@
 import argparse
-import ast
 import importlib
-import io
 import itertools
+from pol import field
 import re
 import sys
-import textwrap
 
 from contextlib import contextmanager
 from hashbang import command, Argument
@@ -13,7 +11,7 @@ from hashbang import command, Argument
 from .util import (debug, BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_,
                    NoMoreRecords)
 from .ioformat import *
-from .record import Record, Header, RecordSequence
+from .record import RecordSequence
 from .parser import Prog
 
 
@@ -53,55 +51,11 @@ class RecordScoped(LazyItem):
             raise NoMoreRecords() from e
 
 
-@command(
-    Argument('field_separator', aliases='F'),
-    Argument('input_format', choices=list(PARSERS)),
-    Argument('output_format', choices=list(PRINTERS)),
-    formatter_class=argparse.RawDescriptionHelpFormatter)
-def pol(prog, input_file=None, *,
-        field_separator=None,
-        record_separator='\n',
-        input_format='awk',
-        output_format='auto'):
-    '''
-    pol - Python one liners to easily parse and process data in Python.
-
-    Pol processes text information from stdin or a given file and evaluates
-    the given input `prog` and prints the result.
-
-    Example:
-        pol 'record[0] + record[1] if record[2] > 50'
-
-    In pol, the input file is treated as a table, which consists of many
-    records (lines). Each record is then consisted of many fields (columns).
-    The separator for records and fields are configurable through the
-    --record_separator and --field_separator options.
-
-    Available variables:
-      - Record scoped:
-        record, fields - A tuple of the fields in the current line.
-            Additionally, `record.str` gives the original string of the given
-            line before processing.
-        line – Alias for `record.str`.
-
-        When referencing a variable in record scope, `prog` must not access
-        any other variables in table scope. In this mode, pol iterates through
-        each record from the input file and prints the result of `prog`.
-
-      - Table scoped:
-        records – A sequence of records (as described in "Record scoped"
-            section above).
-        lines – A sequence of lines (as described in "Record scoped" section
-            above).
-        file, contents – Contents of the entire file as a single string.
-        df – Contents of the entire file as a pandas.DataFrame. (Available
-            only if pandas is installed).
-      - General:
-        filename – The name of the file being processed, possibly None if
-            reading from stdin.
-        re – The regex module.
-        pd – The pandas module, if installed.
-    '''
+def _execute_internal(prog, input_file=None, *,
+            field_separator=None,
+            record_separator='\n',
+            input_format='awk',
+            output_format='auto'):
     prog = Prog(prog)
     new_parser = lambda input_format: create_parser(input_format, record_separator, field_separator)
     parser_box = BoxedItem(lambda: new_parser(input_format))
@@ -179,14 +133,78 @@ def pol(prog, input_file=None, *,
     try:
         result = prog.exec(global_dict)
     except NoMoreRecords:
-        pass
+        return _UNDEFINED_, global_dict
     else:
         if scope == 'record':
             global_dict['BEGIN'] = False
             result = itertools.chain((result,), (prog.exec(global_dict) for _ in record_var))
 
-        printer = global_dict['printer']
-        if not isinstance(printer, Printer):
-            raise RuntimeError(
-                f'printer must be an instance of Printer. Found "{repr(printer)}" instead')
-        global_dict['printer'].print_result(result, header=global_dict.get('header'))
+        return result, global_dict
+
+def run(*args, **kwargs):
+    result, _ = _execute_internal(*args, **kwargs)
+    if isinstance(result, (str, bytes)):
+        return result
+    if isinstance(result, collections.abc.Iterable):
+        return list(result)
+    else:
+        return result
+
+
+@command(
+    Argument('field_separator', aliases='F'),
+    Argument('input_format', choices=list(PARSERS)),
+    Argument('output_format', choices=list(PRINTERS)),
+    formatter_class=argparse.RawDescriptionHelpFormatter)
+def _command_line(prog, input_file=None, *,
+        field_separator=None,
+        record_separator='\n',
+        input_format='awk',
+        output_format='auto'):
+    '''
+    pol - Python one liners to easily parse and process data in Python.
+
+    Pol processes text information from stdin or a given file and evaluates
+    the given input `prog` and prints the result.
+
+    Example:
+        pol 'record[0] + record[1] if record[2] > 50'
+
+    In pol, the input file is treated as a table, which consists of many
+    records (lines). Each record is then consisted of many fields (columns).
+    The separator for records and fields are configurable through the
+    --record_separator and --field_separator options.
+
+    Available variables:
+      - Record scoped:
+        record, fields - A tuple of the fields in the current line.
+            Additionally, `record.str` gives the original string of the given
+            line before processing.
+        line – Alias for `record.str`.
+
+        When referencing a variable in record scope, `prog` must not access
+        any other variables in table scope. In this mode, pol iterates through
+        each record from the input file and prints the result of `prog`.
+
+      - Table scoped:
+        records – A sequence of records (as described in "Record scoped"
+            section above).
+        lines – A sequence of lines (as described in "Record scoped" section
+            above).
+        file, contents – Contents of the entire file as a single string.
+        df – Contents of the entire file as a pandas.DataFrame. (Available
+            only if pandas is installed).
+      - General:
+        filename – The name of the file being processed, possibly None if
+            reading from stdin.
+        re – The regex module.
+        pd – The pandas module, if installed.
+    '''
+    result, global_dict = _execute_internal(prog, input_file,
+            field_separator=field_separator, record_separator=record_separator,
+            input_format=input_format, output_format=output_format)
+    printer = global_dict['printer']
+    if not isinstance(printer, Printer):
+        raise RuntimeError(
+            f'printer must be an instance of Printer. Found "{printer!r}" instead')
+    global_dict['printer'].print_result(result, header=global_dict.get('header'))

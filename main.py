@@ -4,4 +4,4 @@ from pol import pol
 
 
 if __name__ == '__main__':
-    pol.pol.execute()
+    pol._command_line.execute()

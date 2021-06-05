@@ -26,6 +26,44 @@ def _split_last_statement(tokens, prog):
     return 0, 0
 
 
+def _replace_double_semicolons(tokens):
+    double_semis = []
+    last_semi = False
+    tokens = list(tokens)
+    for i, tok in enumerate(tokens):
+        if tok.string == ';':
+            if last_semi:
+                double_semis.append(i-1)
+            else:
+                last_semi = True
+        else:
+            last_semi = False
+    for i in reversed(double_semis):
+        del tokens[i + 1]
+        _replace_with_newline(tokens, i)
+    debug('tokens', list(tokens), double_semis)
+    return tokens
+
+
+def _replace_with_newline(tokens, pos):
+    tok = tokens[pos]
+    tokens[pos] = tokenize.TokenInfo(
+        token.NEWLINE,
+        '\n',
+        tok.start,
+        tok.end,
+        tok.line)
+    for i, tok2 in enumerate(tokens[pos + 1:]):
+        if i == 0:
+            line_offset = tok2.start[1]
+        if tok2.start[0] != tok.start[0]:
+            line_offset = 0
+        tokens[i + pos + 1] = tokenize.TokenInfo(
+            tok2.type, tok2.string,
+            start=(tok2.start[0] + 1, tok2.start[1] - line_offset),
+            end=(tok2.end[0] + 1, tok2.end[1] - line_offset),
+            line=tok2.line)
+
 def _parse(prog):
     '''
     Parse the given pol program into the exec statements and eval statements that can be evaluated
@@ -33,9 +71,13 @@ def _parse(prog):
     '''
     prog_io = io.StringIO(prog)
     tokens = tokenize.generate_tokens(prog_io.readline)
+    tokens = _replace_double_semicolons(tokens)
+    prog = tokenize.untokenize(tokens)
+    debug(f'newprog=\n{prog}')
     split_start, split_end = _split_last_statement(tokens, prog)
     prog_stmts = prog[:split_start]
     prog_expr = prog[split_end:]
+    debug(f'stmt={prog_stmts} expr={prog_expr}')
     try:
         exec_statements = ast.parse(prog_stmts, mode='exec')
     except SyntaxError as e:
@@ -82,10 +124,14 @@ class UserError(RuntimeError):
 
 class Prog:
     def __init__(self, prog):
-        self._exec, self._eval = _parse(prog)
-        debug('Resulting AST', ast.dump(self._exec), ast.dump(self._eval))
-        self._exec = compile(self._exec, filename='pol_user_prog.py', mode='exec')
-        self._eval = compile(self._eval, filename='pol_user_prog.py', mode='eval')
+        if hasattr(prog, '__code__'):
+            self._exec = compile('', filename='pol_user_prog.py', mode='exec')
+            self._eval = prog.__code__
+        else:
+            self._exec, self._eval = _parse(prog)
+            debug('Resulting AST', ast.dump(self._exec), ast.dump(self._eval))
+            self._exec = compile(self._exec, filename='pol_user_prog.py', mode='exec')
+            self._eval = compile(self._eval, filename='pol_user_prog.py', mode='eval')
 
     def exec(self, globals):
         try:
