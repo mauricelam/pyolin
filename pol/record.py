@@ -1,6 +1,7 @@
 import abc
 import itertools
 from itertools import zip_longest
+from typing import Iterable, Optional
 
 from .field import Field
 from .util import StreamingSequence, cached_property
@@ -13,7 +14,7 @@ class HasHeader:
             return o.header
 
     @abc.abstractproperty
-    def header(self):
+    def header(self) -> Iterable[str]:
         raise NotImplementedError()
 
 
@@ -32,12 +33,12 @@ class Header(Record):
 
 
 class RecordSequence(StreamingSequence, HasHeader):
-    def __init__(self, records_iter):
+    def __init__(self, records_iter: Iterable[Record]):
         seq1, self._seq_for_header = itertools.tee(records_iter)
         super().__init__(r for r in seq1 if not isinstance(r, Header))
 
     @cached_property
-    def header(self):
+    def header(self) -> Optional[Header]:
         firstrow = next(self._seq_for_header, None)
         if isinstance(firstrow, Header):
             return firstrow

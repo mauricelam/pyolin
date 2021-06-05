@@ -1,11 +1,11 @@
+import abc
 import collections.abc
-import contextlib
 import functools
 import itertools
 import os
 import sys
 import importlib
-from typing import Iterable, Iterator
+from typing import Callable, Generic, Iterable, Iterator, List, Optional, Tuple, TypeVar, Union
 
 
 def cache(func):
@@ -39,7 +39,8 @@ class NoMoreRecords(StopIteration):
     pass
 
 
-class StreamingSequence(collections.abc.Sequence):
+T = TypeVar('T')
+class StreamingSequence(collections.abc.Sequence[T]):
     '''
     An iterator that also implements the sequence interface. This is "streaming" in the sense that
     it will try its best give the results as soon as we can get the answer from the available input,
@@ -50,7 +51,7 @@ class StreamingSequence(collections.abc.Sequence):
         self._list = None
 
     @property
-    def list(self):
+    def list(self) -> List[T]:
         if not self._list:
             self._list = list(iter(self))
         return self._list
@@ -62,7 +63,7 @@ class StreamingSequence(collections.abc.Sequence):
         result, self._iter = itertools.tee(self._iter, 2)
         return result
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Union[slice, int]) -> Union[Iterable[T], T]:
         if self._list:
             return self._list.__getitem__(key)
         if isinstance(key, slice):
@@ -72,24 +73,24 @@ class StreamingSequence(collections.abc.Sequence):
         except StopIteration:
             raise IndexError('list index out of range')
 
-    def __reversed__(self):
+    def __reversed__(self) -> Iterable[T]:
         # Not necessary, but is probably (slightly) faster than the default
         # implementation that uses __getitem__ and __len__
         return reversed(self.list)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.list)
 
-    def __add__(self, other):
+    def __add__(self, other: Iterable[T]) -> Iterable[T]:
         return StreamingSequence(itertools.chain(self, other))
 
-    def __radd__(self, other):
+    def __radd__(self, other: Iterable[T]) -> Iterable[T]:
         return StreamingSequence(itertools.chain(other, self))
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.list)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.list)
 
 
@@ -121,43 +122,45 @@ class ItemDict(dict):
             raise KeyError(key)
 
 
-class Item:
-    def __init__(self, func):
+I = TypeVar('I')
+class Item(Generic[I]):
+    def __init__(self, func: Callable[..., I]):
         self.func = func
 
-    def __call__(self, *arg, **kwargs):
+    def __call__(self, *arg, **kwargs) -> I:
         return self.func(*arg, **kwargs)
 
 
-class SettableItem(Item):
-    def set(self, value):
+class SettableItem(Item[I], metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def set(self, value: I) -> None:
         raise NotImplementedError()
 
 
-class BoxedItem(SettableItem):
-    def __init__(self, func):
+class BoxedItem(SettableItem[I]):
+    def __init__(self, func: Callable[..., I]):
         super().__init__(func)
         self.value = None
         self.frozen = False
 
-    def set(self, value):
+    def set(self, value: I) -> None:
         debug('setting boxed value ', value)
         if self.frozen:
             raise RuntimeError('Cannot set parser after it has been used')
         self.value = value
 
-    def __call__(self):
+    def __call__(self) -> I:
         if self.value is not None:
             return self.value
         self.value = super().__call__()
         return self.value
 
 
-class LazyItem(Item):
+class LazyItem(Item[I]):
     '''
     Item for ItemDict that is evaluated on demand.
     '''
-    def __init__(self, func, *, on_accessed=None):
+    def __init__(self, func: Callable[..., I], *, on_accessed: Optional[Callable[[], None]]=None):
         super().__init__(func)
         self._val = None
         self._cached = False
@@ -172,13 +175,13 @@ class LazyItem(Item):
         return self._val
 
 
-def peek_iter(iterator, num):
+def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Iterable[T], Iterable[T]]:
     preview = tuple(itertools.islice(iterator, 0, num))
     return preview, itertools.chain(preview, iterator)
 
 
 # https://bugs.python.org/issue11380#msg248579
-def clean_close_stdout_and_stderr():
+def clean_close_stdout_and_stderr() -> None:
     try:
         sys.stdout.flush()
     finally:

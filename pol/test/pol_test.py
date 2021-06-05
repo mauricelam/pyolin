@@ -10,7 +10,8 @@ import textwrap
 import traceback
 import unittest
 from unittest import mock
-from .utils import *
+
+from .utils import ErrorWithStderr, run_capturing_output, timeout
 
 
 def _test_file(file):
@@ -1892,6 +1893,20 @@ Actual:
 
     def testUndefinedIsFalse(self):
         self.assertRunPol('bool(_UNDEFINED_)', False)
+
+    def testEndWithDoubleSemiColon(self):
+        self.assertPol(
+            'record[2];;',
+            '''\
+            | value |
+            | ----- |
+            | 60    |
+            | 58    |
+            | 51    |
+            | 49    |
+            | 48    |
+            ''')
+
 
     # TODOs:
     # Bash / Zsh autocomplete integration

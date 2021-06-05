@@ -4,11 +4,13 @@ import textwrap
 import token
 import tokenize
 import traceback
+from types import CodeType
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 
 from .util import debug, NoMoreRecords
 
 
-def _split_last_statement(tokens, prog):
+def _split_last_statement(tokens: Iterable[tokenize.TokenInfo], prog: str) -> Tuple[int, int]:
     def _line_pos_to_pos(linepos):
         line, pos = linepos
         offset = 0
@@ -26,7 +28,7 @@ def _split_last_statement(tokens, prog):
     return 0, 0
 
 
-def _replace_double_semicolons(tokens):
+def _replace_double_semicolons(tokens: Iterable[tokenize.TokenInfo]) -> Iterable[tokenize.TokenInfo]:
     double_semis = []
     last_semi = False
     tokens = list(tokens)
@@ -45,7 +47,7 @@ def _replace_double_semicolons(tokens):
     return tokens
 
 
-def _replace_with_newline(tokens, pos):
+def _replace_with_newline(tokens: List[tokenize.TokenInfo], pos: int) -> None:
     tok = tokens[pos]
     tokens[pos] = tokenize.TokenInfo(
         token.NEWLINE,
@@ -65,7 +67,8 @@ def _replace_with_newline(tokens, pos):
             end=(tok2.end[0] + 1, tok2.end[1] - line_offset),
             line=tok2.line)
 
-def _parse(prog):
+
+def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
     '''
     Parse the given pol program into the exec statements and eval statements that can be evaluated
     directly, applying the necessary syntax transformations as necessary.
@@ -126,7 +129,11 @@ class UserError(RuntimeError):
 
 
 class Prog:
-    def __init__(self, prog):
+
+    _exec: CodeType
+    _eval: CodeType
+
+    def __init__(self, prog: Any):
         if hasattr(prog, '__code__'):
             self._exec = compile('', filename='pol_user_prog.py', mode='exec')
             self._eval = prog.__code__
@@ -136,7 +143,7 @@ class Prog:
             self._exec = compile(exec_code, filename='pol_user_prog.py', mode='exec')
             self._eval = compile(eval_code, filename='pol_user_prog.py', mode='eval')
 
-    def exec(self, globals):
+    def exec(self, globals: Dict[str, Any]) -> Any:
         try:
             exec(self._exec, globals)
             return eval(self._eval, globals)
