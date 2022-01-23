@@ -1,15 +1,13 @@
 import argparse
 import importlib
 import itertools
-from pol import field
 import re
 import sys
 
 from contextlib import contextmanager
 from hashbang import command, Argument
 
-from .util import (debug, BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_,
-                   NoMoreRecords)
+from .util import (BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_, NoMoreRecords)
 from .ioformat import *
 from .record import RecordSequence
 from .parser import Prog
@@ -51,7 +49,8 @@ class RecordScoped(LazyItem):
             raise NoMoreRecords() from e
 
 
-def _execute_internal(prog, input_file=None, *,
+def _execute_internal(prog, *args,
+            input=None,
             field_separator=None,
             record_separator='\n',
             input_format='awk',
@@ -63,14 +62,14 @@ def _execute_internal(prog, input_file=None, *,
     def gen_records():
         parser_box.frozen = True
         parser = parser_box()
-        with get_io(input_file, binary=parser.binary) as f:
+        with get_io(input, binary=parser.binary) as f:
             for record in parser.records(f):
                 yield record
 
-    def get_contents(input_file):
+    def get_contents(input):
         parser_box.frozen = True
         parser = parser_box()
-        with get_io(input_file, binary=parser.binary) as f:
+        with get_io(input, binary=parser.binary) as f:
             return f.read()
 
     record_seq = RecordSequence(gen_records())
@@ -106,12 +105,12 @@ def _execute_internal(prog, input_file=None, *,
         # Table scoped
         'lines': table_scoped(lambda: StreamingSequence(r.str for r in record_seq)),
         'records': table_scoped(lambda: record_seq),
-        'file': table_scoped(lambda: get_contents(input_file)),
-        'contents': table_scoped(lambda: get_contents(input_file)),
+        'file': table_scoped(lambda: get_contents(input)),
+        'contents': table_scoped(lambda: get_contents(input)),
         'df': table_scoped(get_dataframe),
 
         # Other
-        'filename': input_file,
+        'filename': input,
         '_UNDEFINED_': _UNDEFINED_,
         'new_printer': new_printer,
         'new_parser': new_parser,
@@ -130,6 +129,9 @@ def _execute_internal(prog, input_file=None, *,
         'header': None,
     })
 
+    # Shift argv results
+    sys.argv = ['pol', *args]
+
     try:
         result = prog.exec(global_dict)
     except NoMoreRecords:
@@ -142,6 +144,13 @@ def _execute_internal(prog, input_file=None, *,
         return result, global_dict
 
 def run(*args, **kwargs):
+    '''
+    Run pol from another Python script. This is designed to ease the transition from the one-liner
+    to a more full-fledged script file. By running pol in Python, you get the results in Python
+    list or objects, while still keeping the input parsing and output formatting capabilities of
+    pol. Serious scripts should migrate away from those as well, perhaps outputting json and then
+    using pol as a data-formatting pass-through.
+    '''
     result, _ = _execute_internal(*args, **kwargs)
     if isinstance(result, (str, bytes)):
         return result
@@ -156,7 +165,8 @@ def run(*args, **kwargs):
     Argument('input_format', choices=list(PARSERS)),
     Argument('output_format', choices=list(PRINTERS)),
     formatter_class=argparse.RawDescriptionHelpFormatter)
-def _command_line(prog, input_file=None, *,
+def _command_line(prog, *_REMAINDER_,
+        input=None,
         field_separator=None,
         record_separator='\n',
         input_format='awk',
@@ -200,7 +210,7 @@ def _command_line(prog, input_file=None, *,
         re – The regex module.
         pd – The pandas module, if installed.
     '''
-    result, global_dict = _execute_internal(prog, input_file,
+    result, global_dict = _execute_internal(prog, *_REMAINDER_, input=input,
             field_separator=field_separator, record_separator=record_separator,
             input_format=input_format, output_format=output_format)
     printer = global_dict['printer']

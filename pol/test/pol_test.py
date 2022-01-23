@@ -7,7 +7,6 @@ from pprint import pformat
 import subprocess
 import sys
 import textwrap
-import traceback
 import unittest
 from unittest import mock
 
@@ -18,20 +17,20 @@ def _test_file(file):
     return os.path.join(os.path.dirname(__file__), file)
 
 
-def run_cli(prog, *, data='data_nba.txt', **extra_args):
+def run_cli(prog, *, input='data_nba.txt', extra_args=(), **kwargs):
     with run_capturing_output(errmsg=f'Prog: {prog}') as output:
-        pol._command_line(prog, _test_file(data), **extra_args)
+        pol._command_line(prog, *extra_args, input=_test_file(input), **kwargs)
         return output
 
 
-def run_pol(prog, *, data='data_nba.txt', **extra_args):
-    return pol.run(prog, _test_file(data), **extra_args)
+def run_pol(prog, *, input='data_nba.txt', **kwargs):
+    return pol.run(prog, input=_test_file(input), **kwargs)
 
 
 @contextlib.contextmanager
-def polPopen(prog, extra_args=[], universal_newlines=True, **kwargs):
+def polPopen(prog, extra_args=(), universal_newlines=True, **kwargs):
     with subprocess.Popen(
-        [sys.executable, 'main.py', prog] + extra_args,
+        [sys.executable, '.', prog] + extra_args,
         stdin=kwargs.get('stdin', subprocess.PIPE),
         stdout=kwargs.get('stdout', subprocess.PIPE),
         stderr=kwargs.get('stderr', subprocess.PIPE),
@@ -77,16 +76,16 @@ Actual:
 ---
 ''')
 
-    def assertRunPol(self, prog, expected, *, data='data_nba.txt', repr=False, **kwargs):
-        actual = run_pol(prog, data=data, **kwargs)
+    def assertRunPol(self, prog, expected, *, input='data_nba.txt', **kwargs):
+        actual = run_pol(prog, input=input, **kwargs)
         self.assertEqual(actual, expected)
 
-    def assertPol(self, prog, expected, *, data='data_nba.txt', repr=False, **kwargs):
-        actual = run_cli(prog, data=data, **kwargs)
+    def assertPol(self, prog, expected, *, input='data_nba.txt', extra_args=[], **kwargs):
+        actual = run_cli(prog, input=input, extra_args=extra_args, **kwargs)
         if isinstance(expected, str):
-            self._myassert(actual.getvalue(), expected, prog, data)
+            self._myassert(actual.getvalue(), expected, prog, input)
         else:
-            self._myassert(actual.getbytes(), expected, prog, data)
+            self._myassert(actual.getbytes(), expected, prog, input)
 
     def testLines(self):
         self.assertPol(
@@ -638,7 +637,7 @@ Actual:
             | dir/fileb.txt          |
             | dir/subdir/subfile.txt |
             ''',
-            data='data_files.txt')
+            input='data_files.txt')
 
     def testRecordVariables(self):
         self.assertPol(
@@ -671,7 +670,7 @@ Actual:
             | dir        | True | 30 | 40.0 |
             | dir/subdir | True | 12 | 42.0 |
             ''',
-            data='data_files.txt')
+            input='data_files.txt')
 
     def testAwkHeaderDetection(self):
         self.assertPol(
@@ -682,7 +681,7 @@ Actual:
             | dir        | True  | 30   | 40.0  |
             | dir/subdir | True  | 12   | 42.0  |
             ''',
-            data='data_files_with_header.txt')
+            input='data_files_with_header.txt')
 
     def testFilename(self):
         self.assertPol(
@@ -690,7 +689,7 @@ Actual:
             f'''\
             {os.path.dirname(__file__)}/data_files.txt
             ''',
-            data='data_files.txt')
+            input='data_files.txt')
 
     def testBytes(self):
         self.assertPol(
@@ -760,7 +759,7 @@ Actual:
             | 12 | 42.0 | False |
             | 11 | 53.0 | False |
             ''',
-            data='data_files.txt')
+            input='data_files.txt')
 
     def testFieldsComparison(self):
         self.assertPol(
@@ -777,7 +776,7 @@ Actual:
             | 12 | 42.0 | False |
             | 11 | 53.0 | False |
             ''',
-            data='data_files.txt')
+            input='data_files.txt')
 
     def testMultiplication(self):
         self.assertPol(
@@ -884,7 +883,7 @@ Actual:
             | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
             | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
             ''',
-            data='data_grades_simple_csv.csv',
+            input='data_grades_simple_csv.csv',
             field_separator=r',')
 
     def testFieldSeparatorRegex(self):
@@ -901,7 +900,7 @@ Actual:
     | George    | Boy        | 345-67-3901 | 40 | 0 | 1  | 0 | 11  | 0 | -1 | 0  | 4  | 0  | B  |
     | Heffalump | Harvey     | 632-79-9439 | 30 | 0 | 1  | 0 | 20  | 0 | 30 | 0  | 40 | 0  | C  |
     ''',
-            data='data_grades_simple_csv.csv',
+            input='data_grades_simple_csv.csv',
             field_separator=r'[\.,]')
 
     def testRecordSeparator(self):
@@ -925,7 +924,7 @@ Actual:
             | 0         |
             | 0         |
             ''',
-            data='data_onerow.csv',
+            input='data_onerow.csv',
             record_separator=r',')
 
     def testRecordSeparatorMultipleChars(self):
@@ -940,7 +939,7 @@ Actual:
             | .000E+00,1.000E+00                       |
             | ,1,0,0                                   |
             ''',
-            data='data_onerow.csv',
+            input='data_onerow.csv',
             record_separator=r',2')
 
     def testRecordSeparatorRegex(self):
@@ -967,7 +966,7 @@ Actual:
             | 0        |
             | 0        |
             ''',
-            data='data_onerow.csv',
+            input='data_onerow.csv',
             record_separator=r'[,.]')
 
     def testSimpleCsv(self):
@@ -984,7 +983,7 @@ Actual:
             | George    | Boy        | 345-67-3901 |
             | Heffalump | Harvey     | 632-79-9439 |
             ''',
-            data='data_grades_simple_csv.csv',
+            input='data_grades_simple_csv.csv',
             input_format='csv')
 
     def testQuotedCsv(self):
@@ -1000,7 +999,7 @@ Actual:
             | Dateline Friday  |
             | Dateline Sunday  |
             ''',
-            data='data_news_decline.csv',
+            input='data_news_decline.csv',
             input_format='csv')
 
     def testQuotedCsvStr(self):
@@ -1016,7 +1015,7 @@ Actual:
             | "Dateline Friday",  4.1, 4.1, 3.9 |
             | "Dateline Sunday",  3.5, 3.2, 3.1 |
             ''',
-            data='data_news_decline.csv',
+            input='data_news_decline.csv',
             input_format='csv')
 
     def testAutoCsv(self):
@@ -1032,7 +1031,7 @@ Actual:
             |                       | Blankman |                                  |
             | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
             ''',
-            data='data_addresses.csv',
+            input='data_addresses.csv',
             input_format='csv')
 
     def testCsvExcel(self):
@@ -1048,7 +1047,7 @@ Actual:
             |                       | Blankman |                                  |
             | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
             ''',
-            data='data_addresses.csv',
+            input='data_addresses.csv',
             input_format='csv_excel')
 
     def testCsvUnix(self):
@@ -1064,7 +1063,7 @@ Actual:
             | |Blankman|                                     |
             | Joan "the bone", Anne|Jet|9th, at Terrace plc  |
             ''',
-            data='data_addresses_unix.csv',
+            input='data_addresses_unix.csv',
             input_format='csv')
 
     def testQuotedTsv(self):
@@ -1080,7 +1079,7 @@ Actual:
             | Dateline Friday  | 4.1 |
             | Dateline Sunday  | 3.2 |
             ''',
-            data='data_news_decline.tsv',
+            input='data_news_decline.tsv',
             input_format='csv',
             field_separator='\t')
 
@@ -1138,7 +1137,7 @@ Actual:
             | George    | 345-67-3901 | 4     |
             | Heffalump | 632-79-9439 | 40    |
             ''',
-            data='data_grades_with_header.csv',
+            input='data_grades_with_header.csv',
             input_format='csv')
 
     def testForceHasHeader(self):
@@ -1154,7 +1153,7 @@ Actual:
             | George    | 345-67-3901 | 4.0  |
             | Heffalump | 632-79-9439 | 40.0 |
             ''',
-            data='data_grades_simple_csv.csv',
+            input='data_grades_simple_csv.csv',
             input_format='csv')
 
     def testHeaderDetectionCsvExcel(self):
@@ -1169,7 +1168,7 @@ Actual:
             | Stephen               | 7452 Terrace "At the Plaza" road |
             | Joan "the bone", Anne | 9th, at Terrace plc              |
             ''',
-            data='data_addresses_with_header.csv',
+            input='data_addresses_with_header.csv',
             input_format='csv_excel')
 
     def testPrintDataframeHeader(self):
@@ -1188,7 +1187,7 @@ Actual:
             | Final      |
             | Grade      |
             ''',
-            data='data_grades_with_header.csv',
+            input='data_grades_with_header.csv',
             input_format='csv')
 
     def testAssignToRecord(self):
@@ -1219,13 +1218,13 @@ Actual:
         self.assertPol(
             'record[0]',
             '',
-            data=os.devnull)
+            input=os.devnull)
 
     def testEmptyTableScoped(self):
         self.assertPol(
             'record for record in records',
             '',
-            data=os.devnull)
+            input=os.devnull)
 
     def testSemicolonInString(self):
         self.assertPol(
@@ -1319,7 +1318,7 @@ Actual:
             ''',
             input_format='csv',
             output_format='csv',
-            data='data_addresses.csv')
+            input='data_addresses.csv')
 
     def testCsvOutputWithHeader(self):
         self.assertPol(
@@ -1334,7 +1333,7 @@ Actual:
             George,345-67-3901,4\r
             Heffalump,632-79-9439,40\r
             ''',
-            data='data_grades_with_header.csv',
+            input='data_grades_with_header.csv',
             input_format='csv',
             output_format='csv')
 
@@ -1357,7 +1356,7 @@ Actual:
             George,345-67-3901,4\r
             Heffalump,632-79-9439,40\r
             ''',
-            data='data_grades_with_header.csv',
+            input='data_grades_with_header.csv',
             input_format='csv',
             output_format='csv')
 
@@ -1389,7 +1388,7 @@ Actual:
             George,345-67-3901,4.0\r
             Heffalump,632-79-9439,40.0\r
             ''',
-            data='data_grades_simple_csv.csv',
+            input='data_grades_simple_csv.csv',
             input_format='csv',
             output_format='csv')
 
@@ -1407,7 +1406,7 @@ Actual:
             | George    | 345-67-3901 | 4     |
             | Heffalump | 632-79-9439 | 40    |
             ''',
-            data='data_grades_with_header.csv',
+            input='data_grades_with_header.csv',
             input_format='csv',
             output_format='markdown')
 
@@ -1496,7 +1495,7 @@ Actual:
                 :             : despite day 1 which is typical of a new          :             :
                 :             : mechanical watch                                 :             :
                 ''',
-                data='data_amazon_reviews.tsv',
+                input='data_amazon_reviews.tsv',
                 input_format='tsv',
                 output_format='markdown')
 
@@ -1511,7 +1510,7 @@ Actual:
                 :   :   :   :   :   :   :   :   :   :   :    :       : 789123456789 :     :    :
                 :   :   :   :   :   :   :   :   :   :   :    :       : 123456789    :     :    :
                 ''',
-                data='data_formatting.txt',
+                input='data_formatting.txt',
                 output_format='markdown')
 
     def testJsonOutput(self):
@@ -1542,7 +1541,7 @@ Actual:
             | yellow  | #ff0  |
             | black   | #000  |
             ''',
-            data='data_colors.json',
+            input='data_colors.json',
             input_format='json',
             output_format='markdown')
 
@@ -1552,7 +1551,7 @@ Actual:
             '''\
             True
             ''',
-            data='data_colors.json',
+            input='data_colors.json',
             input_format='json')
 
     def testSingleValueOutput(self):
@@ -1563,7 +1562,7 @@ Actual:
             | ----- |
             | 7     |
             ''',
-            data='data_colors.json',
+            input='data_colors.json',
             input_format='json',
             output_format='markdown')
 
@@ -1575,7 +1574,7 @@ Actual:
             | ----- | ----- |
             | red   | #f00  |
             ''',
-            data='data_colors.json',
+            input='data_colors.json',
             input_format='json',
             output_format='markdown')
 
@@ -1593,7 +1592,7 @@ Actual:
             | yellow  | #ff0  |
             | black   | #000  |
             ''',
-            data='data_colors.json',
+            input='data_colors.json',
             input_format='json',
             output_format='markdown')
 
@@ -1611,7 +1610,7 @@ Actual:
             | {"color": "yellow", "value": "#ff0"}  |
             | {"color": "black", "value": "#000"}   |
             ''',
-            data='data_colors.json',
+            input='data_colors.json',
             input_format='json',
             output_format='markdown')
 
@@ -1699,7 +1698,7 @@ Actual:
             21
             ''',
             input_format='binary',
-            data='data_pickle')
+            input='data_pickle')
 
     def testBinaryInputPickle(self):
         self.assertPol(
@@ -1708,7 +1707,7 @@ Actual:
             hello world
             ''',
             input_format='binary',
-            data='data_pickle')
+            input='data_pickle')
 
     def testBinaryPrinter(self):
         self.assertPol(
@@ -1719,7 +1718,7 @@ Actual:
 
     def testBinaryInputAccessRecords(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_cli('records', input_format='binary', data='data_pickle')
+            run_cli('records', input_format='binary', input='data_pickle')
         self.assertEqual(
             'Record based attributes are not supported in binary input mode',
             str(context.exception.__cause__))
@@ -1738,7 +1737,7 @@ Actual:
             | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
             | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
             ''',
-            data='data_grades_simple_csv.csv')
+            input='data_grades_simple_csv.csv')
 
     def testSetRecordSeparator(self):
         self.assertPol(
@@ -1761,7 +1760,7 @@ Actual:
             | 0         |
             | 0         |
             ''',
-            data='data_onerow.csv')
+            input='data_onerow.csv')
 
     def testSetParser(self):
         self.assertPol(
@@ -1777,7 +1776,7 @@ Actual:
             | yellow  | #ff0  |
             | black   | #000  |
             ''',
-            data='data_colors.json')
+            input='data_colors.json')
 
     def testSetParserRecord(self):
         with self.assertRaises(ErrorWithStderr) as context:
@@ -1879,6 +1878,9 @@ Actual:
             ''')
 
     def testIfBeginDoubleSemiColon(self):
+        '''
+        Double semi-colon is treated as a newline
+        '''
         self.assertPol(
             'if BEGIN: sum = 0;; sum += record[2]; sum, record[2]',
             '''\
@@ -1906,6 +1908,24 @@ Actual:
             | 49    |
             | 48    |
             ''')
+
+    def testSysArgv(self):
+        '''
+        sys.argv should be shifted, so sys.argv[1] should be the first one after the pol prog
+        '''
+        self.assertPol(
+            'sys.argv',
+            '''\
+            | value   |
+            | ------- |
+            | pol     |
+            | testing |
+            | 1       |
+            | 2       |
+            | 3       |
+            ''',
+            extra_args=['testing', '1', '2', '3']
+        )
 
 
     # TODOs:
