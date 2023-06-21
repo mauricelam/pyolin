@@ -1,4 +1,7 @@
 # pol
+
+![CI](https://github.com/mauricelam/pol/actions/workflows/python-package.yml/badge.svg)
+
 Tool to easily write Python one-liners
 
 Pol processes data from stdin or a given file, evaluates the given input `prog` and prints the result.
