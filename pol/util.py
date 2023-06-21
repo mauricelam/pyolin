@@ -1,11 +1,10 @@
 import abc
-import collections.abc
 import functools
 import itertools
 import os
 import sys
 import importlib
-from typing import Callable, Generic, Iterable, Iterator, List, Optional, Tuple, TypeVar, Union
+from typing import Callable, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, TypeVar, Union
 
 
 def cache(func):
@@ -40,7 +39,7 @@ class NoMoreRecords(StopIteration):
 
 
 T = TypeVar('T')
-class StreamingSequence(collections.abc.Sequence[T]):
+class StreamingSequence(Sequence[T]):
     '''
     An iterator that also implements the sequence interface. This is "streaming" in the sense that
     it will try its best give the results as soon as we can get the answer from the available input,
