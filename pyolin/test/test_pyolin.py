@@ -30,7 +30,7 @@ def run_pyolin(prog, *, input='data_nba.txt', **kwargs):
 @contextlib.contextmanager
 def pyolinPopen(prog, extra_args=(), universal_newlines=True, **kwargs):
     with subprocess.Popen(
-        [sys.executable, '.', prog] + extra_args,
+        [sys.executable, '-m', 'pyolin', prog] + extra_args,
         stdin=kwargs.get('stdin', subprocess.PIPE),
         stdout=kwargs.get('stdout', subprocess.PIPE),
         stderr=kwargs.get('stderr', subprocess.PIPE),
