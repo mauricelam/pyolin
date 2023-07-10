@@ -1,8 +1,8 @@
 import contextlib
 import os
-from pol.parser import UserError
-from pol import pol
-from pol.util import _UNDEFINED_
+from pyolin.parser import UserError
+from pyolin import pyolin
+from pyolin.util import _UNDEFINED_
 from pprint import pformat
 import subprocess
 import sys
@@ -19,16 +19,16 @@ def _test_file(file):
 
 def run_cli(prog, *, input='data_nba.txt', extra_args=(), **kwargs):
     with run_capturing_output(errmsg=f'Prog: {prog}') as output:
-        pol._command_line(prog, *extra_args, input=_test_file(input), **kwargs)
+        pyolin._command_line(prog, *extra_args, input=_test_file(input), **kwargs)
         return output
 
 
-def run_pol(prog, *, input='data_nba.txt', **kwargs):
-    return pol.run(prog, input=_test_file(input), **kwargs)
+def run_pyolin(prog, *, input='data_nba.txt', **kwargs):
+    return pyolin.run(prog, input=_test_file(input), **kwargs)
 
 
 @contextlib.contextmanager
-def polPopen(prog, extra_args=(), universal_newlines=True, **kwargs):
+def pyolinPopen(prog, extra_args=(), universal_newlines=True, **kwargs):
     with subprocess.Popen(
         [sys.executable, '.', prog] + extra_args,
         stdin=kwargs.get('stdin', subprocess.PIPE),
@@ -40,7 +40,7 @@ def polPopen(prog, extra_args=(), universal_newlines=True, **kwargs):
         yield proc
 
 
-class PolTest(unittest.TestCase):
+class PyolinTest(unittest.TestCase):
 
     maxDiff = None
     longMessage = True
@@ -52,7 +52,7 @@ class PolTest(unittest.TestCase):
                 actual,
                 expected,
                 msg=f'''\
-Prog: pol \'{prog}\' {_test_file(data)}
+Prog: pyolin \'{prog}\' {_test_file(data)}
 Expected:
 {textwrap.indent(expected, '    ')}
 ---
@@ -66,7 +66,7 @@ Actual:
                 actual,
                 expected,
                 msg=f'''\
-Prog: pol \'{prog}\' {_test_file(data)}
+Prog: pyolin \'{prog}\' {_test_file(data)}
 Expected:
     {expected!r}
 ---
@@ -76,11 +76,11 @@ Actual:
 ---
 ''')
 
-    def assertRunPol(self, prog, expected, *, input='data_nba.txt', **kwargs):
-        actual = run_pol(prog, input=input, **kwargs)
+    def assertRunPyolin(self, prog, expected, *, input='data_nba.txt', **kwargs):
+        actual = run_pyolin(prog, input=input, **kwargs)
         self.assertEqual(actual, expected)
 
-    def assertPol(self, prog, expected, *, input='data_nba.txt', extra_args=[], **kwargs):
+    def assertPyolin(self, prog, expected, *, input='data_nba.txt', extra_args=[], **kwargs):
         actual = run_cli(prog, input=input, extra_args=extra_args, **kwargs)
         if isinstance(expected, str):
             self._myassert(actual.getvalue(), expected, prog, input)
@@ -88,7 +88,7 @@ Actual:
             self._myassert(actual.getbytes(), expected, prog, input)
 
     def testLines(self):
-        self.assertPol(
+        self.assertPyolin(
             'line for line in lines',
             '''\
             | value                          |
@@ -101,7 +101,7 @@ Actual:
             ''')
 
     def testLine(self):
-        self.assertPol(
+        self.assertPyolin(
             'line',
             '''\
             | value                          |
@@ -114,7 +114,7 @@ Actual:
             ''')
 
     def testFields(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields',
             '''\
             | 0       | 1            | 2  | 3  | 4     |
@@ -127,7 +127,7 @@ Actual:
             ''')
 
     def testAwkOutputFormat(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields',
             '''\
             Bucks Milwaukee 60 22 0.732
@@ -139,7 +139,7 @@ Actual:
             output_format='awk')
 
     def testAwkOutputFormatFieldSeparator(self):
-        self.assertPol(
+        self.assertPyolin(
             'printer.field_separator = ","; fields',
             '''\
             Bucks,Milwaukee,60,22,0.732
@@ -151,7 +151,7 @@ Actual:
             output_format='awk')
 
     def testAwkOutputFormatRecordSeparator(self):
-        self.assertPol(
+        self.assertPyolin(
             'printer.record_separator = ";\\n"; fields',
             '''\
             Bucks Milwaukee 60 22 0.732;
@@ -163,7 +163,7 @@ Actual:
             output_format='awk')
 
     def testReorderFields(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[1], fields[0]',
             '''\
             | 0            | 1       |
@@ -176,7 +176,7 @@ Actual:
             ''')
 
     def testConditional(self):
-        self.assertPol(
+        self.assertPyolin(
             'record for record in records if record[1] == "Boston"',
             '''\
             | 0       | 1      | 2  | 3  | 4     |
@@ -185,7 +185,7 @@ Actual:
             ''')
 
     def testNumberConversion(self):
-        self.assertPol(
+        self.assertPyolin(
             'record.str for record in records if record[2] > 50',
             '''\
             | value                          |
@@ -196,14 +196,14 @@ Actual:
             ''')
 
     def testExpressionRecord(self):
-        self.assertPol(
+        self.assertPyolin(
             'len(records)',
             '''\
             5
             ''')
 
     def testIfExpression(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[0] if fields[3] > 30',
             '''\
             | value   |
@@ -214,7 +214,7 @@ Actual:
             ''')
 
     def testTernaryExplicit(self):
-        self.assertPol(
+        self.assertPyolin(
             'r[1] if len(r[1]) > 8 else "Name too short" for r in records',
             '''\
             | value          |
@@ -227,7 +227,7 @@ Actual:
             ''')
 
     def testTernaryImplicit(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[1] if fields[2] > 50 else "Score too low"',
             '''\
             | value         |
@@ -240,14 +240,14 @@ Actual:
             ''')
 
     def testCountCondition(self):
-        self.assertPol(
+        self.assertPyolin(
             'len([r for r in records if r[2] > 50])',
             '''\
             3
             ''')
 
     def testEnumerate(self):
-        self.assertPol(
+        self.assertPyolin(
             '(i, line) for i, line in enumerate(lines)',
             '''\
             | 0 | 1                              |
@@ -260,7 +260,7 @@ Actual:
             ''')
 
     def testSkipNone(self):
-        self.assertPol(
+        self.assertPyolin(
             '[None, 1, 2, 3]',
             '''\
             | value |
@@ -275,14 +275,14 @@ Actual:
         """
         Just a singleton None, not in a sequence, should be printed (maybe?)
         """
-        self.assertPol(
+        self.assertPyolin(
             'None',
             '''\
             None
             ''')
 
     def testRegex(self):
-        self.assertPol(
+        self.assertPyolin(
             r'fields if re.match(r"^\d.*", fields[0])',
             '''\
             | 0     | 1            | 2  | 3  | 4     |
@@ -291,7 +291,7 @@ Actual:
             ''')
 
     def testAddition(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[2] + 100',
             '''\
             | value |
@@ -304,7 +304,7 @@ Actual:
             ''')
 
     def testRadd(self):
-        self.assertPol(
+        self.assertPyolin(
             '100 + fields[2]',
             '''\
             | value |
@@ -317,7 +317,7 @@ Actual:
             ''')
 
     def testFieldAddition(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[2] + fields[3]',
             '''\
             | value |
@@ -330,7 +330,7 @@ Actual:
             ''')
 
     def testFieldConcat(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[2] + fields[0]',
             '''\
             | value     |
@@ -343,7 +343,7 @@ Actual:
             ''')
 
     def testFieldConcatReversed(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[0] + fields[2]',
             '''\
             | value     |
@@ -356,7 +356,7 @@ Actual:
             ''')
 
     def testStringConcat(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[0] + "++"',
             '''\
             | value     |
@@ -369,7 +369,7 @@ Actual:
             ''')
 
     def testLt(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[0] if fields[2] < 51',
             '''\
             | value   |
@@ -379,7 +379,7 @@ Actual:
             ''')
 
     def testLe(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[0] if fields[2] <= 51',
             '''\
             | value   |
@@ -390,7 +390,7 @@ Actual:
             ''')
 
     def testSubtraction(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[2] - 50',
             '''\
             | value |
@@ -403,7 +403,7 @@ Actual:
             ''')
 
     def testRsub(self):
-        self.assertPol(
+        self.assertPyolin(
             '50 - fields[2]',
             '''\
             | value |
@@ -416,7 +416,7 @@ Actual:
             ''')
 
     def testLeftShift(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[2] << 2',
             '''\
             | value |
@@ -429,7 +429,7 @@ Actual:
             ''')
 
     def testNeg(self):
-        self.assertPol(
+        self.assertPyolin(
             '(-fields[2])',
             '''\
             | value |
@@ -442,7 +442,7 @@ Actual:
             ''')
 
     def testRound(self):
-        self.assertPol(
+        self.assertPyolin(
             'round(fields[2], -2)',
             '''\
             | value |
@@ -455,7 +455,7 @@ Actual:
             ''')
 
     def testSkipFirstLine(self):
-        self.assertPol(
+        self.assertPyolin(
             'l for l in lines[1:]',
             '''\
             | value                          |
@@ -467,7 +467,7 @@ Actual:
             ''')
 
     def testAnd(self):
-        self.assertPol(
+        self.assertPyolin(
             'record if fields[2] > 50 and fields[3] > 30',
             '''\
             | 0     | 1            | 2  | 3  | 4     |
@@ -476,7 +476,7 @@ Actual:
             ''')
 
     def testAddHeader(self):
-        self.assertPol(
+        self.assertPyolin(
             'header = ("Team", "City", "Win", "Loss", "Winrate"); records',
             '''\
             | Team    | City         | Win | Loss | Winrate |
@@ -489,34 +489,34 @@ Actual:
             ''')
 
     def testCountDots(self):
-        self.assertPol(
+        self.assertPyolin(
             'sum(line.count("0") for line in lines)',
             '''\
             7
             ''')
 
     def testMaxScore(self):
-        self.assertPol(
+        self.assertPyolin(
             'max(r[2] for r in records)',
             '''\
             60
             ''')
 
     def testContents(self):
-        self.assertPol(
+        self.assertPyolin(
             'len(contents)',
             '''\
             154
             ''')
 
     def testEmptyList(self):
-        self.assertPol(
+        self.assertPyolin(
             '[]',
             '''\
             ''')
 
     def testStreamingStdin(self):
-        with polPopen('parser.has_header = False; line', extra_args=['--output_format=awk']) as proc:
+        with pyolinPopen('parser.has_header = False; line', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.flush()
             with timeout(2):
@@ -531,7 +531,7 @@ Actual:
                     'Celtics Boston     49 33 0.598\n')
 
     def testClosedStdout(self):
-        with polPopen('parser.has_header = False; line', extra_args=['--output_format=awk']) as proc:
+        with pyolinPopen('parser.has_header = False; line', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.flush()
             with timeout(2):
@@ -546,7 +546,7 @@ Actual:
             self.assertEqual(errmsg, '', errmsg)
 
     def testStreamingStdinBinary(self):
-        with polPopen(
+        with pyolinPopen(
                 'file[:2]',
                 extra_args=['--input_format=binary', '--output_format=binary'],
                 universal_newlines=False) as proc:
@@ -554,7 +554,7 @@ Actual:
             self.assertEqual(stdout, b'\x30\x62')
 
     def testStreamingSlice(self):
-        with polPopen(
+        with pyolinPopen(
                 'parser.has_header = False; records[:2]', extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.write('Celtics Boston     49 33 0.598\n')
@@ -569,7 +569,7 @@ Actual:
             proc.stdin.write('Write more stuff...\n')
 
     def testStreamingIndex(self):
-        with polPopen(
+        with pyolinPopen(
                 'parser.has_header = False; records[1].str',
                 extra_args=['--output_format=awk']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
@@ -582,14 +582,14 @@ Actual:
             proc.stdin.write('Write more stuff...\n')
 
     def testRecordsIndex(self):
-        self.assertPol(
+        self.assertPyolin(
             'records[1]',
             '''\
             Raptors Toronto 58 24 0.707
             ''')
 
     def testDestructuring(self):
-        self.assertPol(
+        self.assertPyolin(
             'city for team, city, _, _, _ in records',
             '''\
             | value        |
@@ -602,7 +602,7 @@ Actual:
             ''')
 
     def testPercentage(self):
-        self.assertPol(
+        self.assertPyolin(
             '(r[0], round(r[3] / sum(r[3] for r in records), 2)) '
             'for r in records',
             '''\
@@ -620,14 +620,14 @@ Actual:
         Tuples are treated as fields in a single record, whereas other iterable
         types are treated as multiple records.
         """
-        self.assertPol(
+        self.assertPyolin(
             'sum(r[3] for r in records), max(r[3] for r in records)',
             '''\
             144 34
             ''')
 
     def testModuleImport(self):
-        self.assertPol(
+        self.assertPyolin(
             'record[0] if fnmatch.fnmatch(record[0], "*.txt")',
             '''\
             | value                  |
@@ -640,7 +640,7 @@ Actual:
             input='data_files.txt')
 
     def testRecordVariables(self):
-        self.assertPol(
+        self.assertPyolin(
             'type(record).__name__, type(line).__name__, '
             'type(fields).__name__',
             '''\
@@ -654,7 +654,7 @@ Actual:
             ''')
 
     def testFileVariables(self):
-        self.assertPol(
+        self.assertPyolin(
             'type(lines).__name__, type(records).__name__, '
             'type(file).__name__, type(contents).__name__',
             '''\
@@ -662,7 +662,7 @@ Actual:
             ''')
 
     def testBoolean(self):
-        self.assertPol(
+        self.assertPyolin(
             'record if record[1].bool',
             '''\
             | 0          | 1    | 2  | 3    |
@@ -673,7 +673,7 @@ Actual:
             input='data_files.txt')
 
     def testAwkHeaderDetection(self):
-        self.assertPol(
+        self.assertPyolin(
             'record if record[1].bool',
             '''\
             | Path       | IsDir | Size | Score |
@@ -684,7 +684,7 @@ Actual:
             input='data_files_with_header.txt')
 
     def testFilename(self):
-        self.assertPol(
+        self.assertPyolin(
             'filename',
             f'''\
             {os.path.dirname(__file__)}/data_files.txt
@@ -692,14 +692,14 @@ Actual:
             input='data_files.txt')
 
     def testBytes(self):
-        self.assertPol(
+        self.assertPyolin(
             'b"hello"',
             '''\
             hello
             ''')
 
     def testReversed(self):
-        self.assertPol(
+        self.assertPyolin(
             'reversed(lines)',
             '''\
             | value                          |
@@ -712,14 +712,14 @@ Actual:
             ''')
 
     def testInOperator(self):
-        self.assertPol(
+        self.assertPyolin(
             '"Raptors Toronto    58 24 0.707" in lines',
             '''\
             True
             ''')
 
     def testBase64(self):
-        self.assertPol(
+        self.assertPyolin(
             'base64.b64encode(fields[0].bytes)',
             '''\
             | value        |
@@ -732,7 +732,7 @@ Actual:
             ''')
 
     def testUrlQuote(self):
-        self.assertPol(
+        self.assertPyolin(
             'urllib.parse.quote(line)',
             '''\
             | value                                          |
@@ -745,7 +745,7 @@ Actual:
             ''')
 
     def testFieldsEqual(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[2], fields[3], fields[2] == fields[3]',
             '''\
             | 0  | 1    | 2     |
@@ -762,7 +762,7 @@ Actual:
             input='data_files.txt')
 
     def testFieldsComparison(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[2], fields[3], fields[2] >= fields[3]',
             '''\
             | 0  | 1    | 2     |
@@ -779,7 +779,7 @@ Actual:
             input='data_files.txt')
 
     def testMultiplication(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[3] * 10',
             '''\
             | value |
@@ -792,7 +792,7 @@ Actual:
             ''')
 
     def testFieldsMultiplication(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[3] * fields[2]',
             '''\
             | value |
@@ -805,7 +805,7 @@ Actual:
             ''')
 
     def testStringMultiplication(self):
-        self.assertPol(
+        self.assertPyolin(
             'fields[0] * 2',
             '''\
             | value          |
@@ -818,7 +818,7 @@ Actual:
             ''')
 
     def testPandasDataframe(self):
-        self.assertPol(
+        self.assertPyolin(
             'df',
             '''\
             | 0       | 1            | 2  | 3  | 4     |
@@ -831,7 +831,7 @@ Actual:
             ''')
 
     def testPandasDtypes(self):
-        self.assertPol(
+        self.assertPyolin(
             'df.dtypes',
             '''\
             | value   |
@@ -844,7 +844,7 @@ Actual:
             ''')
 
     def testPandaNumericOperations(self):
-        self.assertPol(
+        self.assertPyolin(
             'df[2] * 2',
             '''\
             | value |
@@ -857,7 +857,7 @@ Actual:
             ''')
 
     def testNumpyNumericOperations(self):
-        self.assertPol(
+        self.assertPyolin(
             'np.power(df[2], 2)',
             '''\
             | value |
@@ -870,7 +870,7 @@ Actual:
             ''')
 
     def testFieldSeparator(self):
-        self.assertPol(
+        self.assertPyolin(
             'record',
             '''\
             | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
@@ -887,7 +887,7 @@ Actual:
             field_separator=r',')
 
     def testFieldSeparatorRegex(self):
-        self.assertPol(
+        self.assertPyolin(
             'record',
             '''\
     | 0         | 1          | 2           | 3  | 4 | 5  | 6 | 7   | 8 | 9  | 10 | 11 | 12 | 13 |
@@ -904,7 +904,7 @@ Actual:
             field_separator=r'[\.,]')
 
     def testRecordSeparator(self):
-        self.assertPol(
+        self.assertPyolin(
             'record',
             '''\
             | value     |
@@ -928,7 +928,7 @@ Actual:
             record_separator=r',')
 
     def testRecordSeparatorMultipleChars(self):
-        self.assertPol(
+        self.assertPyolin(
             'parser.has_header=False; record',
             '''\
             | value                                    |
@@ -943,7 +943,7 @@ Actual:
             record_separator=r',2')
 
     def testRecordSeparatorRegex(self):
-        self.assertPol(
+        self.assertPyolin(
             'record',
             '''\
             | value    |
@@ -970,7 +970,7 @@ Actual:
             record_separator=r'[,.]')
 
     def testSimpleCsv(self):
-        self.assertPol(
+        self.assertPyolin(
             'df[[0, 1, 2]]',
             '''\
             | 0         | 1          | 2           |
@@ -987,7 +987,7 @@ Actual:
             input_format='csv')
 
     def testQuotedCsv(self):
-        self.assertPol(
+        self.assertPyolin(
             'record[0]',
             '''\
             | value            |
@@ -1003,7 +1003,7 @@ Actual:
             input_format='csv')
 
     def testQuotedCsvStr(self):
-        self.assertPol(
+        self.assertPyolin(
             'record.str',
             '''\
             | value                             |
@@ -1019,7 +1019,7 @@ Actual:
             input_format='csv')
 
     def testAutoCsv(self):
-        self.assertPol(
+        self.assertPyolin(
             'df[[0,1,2]]',
             '''\
             | 0                     | 1        | 2                                |
@@ -1035,7 +1035,7 @@ Actual:
             input_format='csv')
 
     def testCsvExcel(self):
-        self.assertPol(
+        self.assertPyolin(
             'df[[0,1,2]]',
             '''\
             | 0                     | 1        | 2                                |
@@ -1051,7 +1051,7 @@ Actual:
             input_format='csv_excel')
 
     def testCsvUnix(self):
-        self.assertPol(
+        self.assertPyolin(
             '"|".join((record[0], record[1], record[2]))',
             '''\
             | value                                          |
@@ -1067,7 +1067,7 @@ Actual:
             input_format='csv')
 
     def testQuotedTsv(self):
-        self.assertPol(
+        self.assertPyolin(
             'record[0], record[2]',
             '''\
             | 0                | 1   |
@@ -1084,7 +1084,7 @@ Actual:
             field_separator='\t')
 
     def testStatement(self):
-        self.assertPol(
+        self.assertPyolin(
             'a = record[2]; b = 1; a + b',
             '''\
             | value |
@@ -1097,7 +1097,7 @@ Actual:
             ''')
 
     def testStatementTable(self):
-        self.assertPol(
+        self.assertPyolin(
             'a = len(records); b = 2; a * b',
             '''\
             10
@@ -1124,7 +1124,7 @@ Actual:
             str(context.exception.__cause__))
 
     def testHeaderDetection(self):
-        self.assertPol(
+        self.assertPyolin(
             'df[["Last name", "SSN", "Final"]]',
             '''\
             | Last name | SSN         | Final |
@@ -1141,7 +1141,7 @@ Actual:
             input_format='csv')
 
     def testForceHasHeader(self):
-        self.assertPol(
+        self.assertPyolin(
             'parser.has_header = True; (r[0], r[2], r[7]) for r in records',
             '''\
             | Alfalfa   | 123-45-6789 | 49.0 |
@@ -1157,7 +1157,7 @@ Actual:
             input_format='csv')
 
     def testHeaderDetectionCsvExcel(self):
-        self.assertPol(
+        self.assertPyolin(
             'df[["Last Name", "Address"]]',
             '''\
             | Last Name             | Address                          |
@@ -1172,7 +1172,7 @@ Actual:
             input_format='csv_excel')
 
     def testPrintDataframeHeader(self):
-        self.assertPol(
+        self.assertPyolin(
             'list(df.columns.values)',
             '''\
             | value      |
@@ -1194,7 +1194,7 @@ Actual:
         '''
         Try to confuse the parser by writing to a field called record
         '''
-        self.assertPol(
+        self.assertPyolin(
             'record=1; record+1',
             '''\
             2
@@ -1215,19 +1215,19 @@ Actual:
             str(context.exception.__cause__.__cause__))
 
     def testEmptyRecordScoped(self):
-        self.assertPol(
+        self.assertPyolin(
             'record[0]',
             '',
             input=os.devnull)
 
     def testEmptyTableScoped(self):
-        self.assertPol(
+        self.assertPyolin(
             'record for record in records',
             '',
             input=os.devnull)
 
     def testSemicolonInString(self):
-        self.assertPol(
+        self.assertPyolin(
             '"hello; world"',
             'hello; world\n')
 
@@ -1238,7 +1238,7 @@ Actual:
         formatted = context.exception.__cause__.formatted_tb()
         self.assertEqual(5, len(formatted), pformat(formatted))
         self.assertIn('Traceback (most recent call last)', formatted[0])
-        self.assertIn('pol_user_prog.py', formatted[1])
+        self.assertIn('pyolin_user_prog.py', formatted[1])
         self.assertIn('return quote_from_bytes', formatted[2])
         self.assertIn('"quote_from_bytes() expected bytes"', formatted[3])
         self.assertIn('quote_from_bytes() expected bytes', formatted[4])
@@ -1251,7 +1251,7 @@ Actual:
             str(context.exception.__cause__))
 
     def testCsvOutputFormat(self):
-        self.assertPol(
+        self.assertPyolin(
             'records',
             '''\
             Bucks,Milwaukee,60,22,0.732\r
@@ -1263,7 +1263,7 @@ Actual:
             output_format='csv')
 
     def testCsvOutputFormatUnix(self):
-        self.assertPol(
+        self.assertPyolin(
             'printer.dialect = csv.unix_dialect; records',
             '''\
             "Bucks","Milwaukee","60","22","0.732"
@@ -1282,7 +1282,7 @@ Actual:
             str(context.exception.__cause__))
 
     def testCsvOutputFormatDelimiter(self):
-        self.assertPol(
+        self.assertPyolin(
             'printer.delimiter = "^"; records',
             '''\
             Bucks^Milwaukee^60^22^0.732\r
@@ -1294,7 +1294,7 @@ Actual:
             output_format='csv')
 
     def testCsvOutputNonTuple(self):
-        self.assertPol(
+        self.assertPyolin(
             'record[2]',
             '''\
             60\r
@@ -1306,7 +1306,7 @@ Actual:
             output_format='csv')
 
     def testCsvOutputQuoting(self):
-        self.assertPol(
+        self.assertPyolin(
             'records',
             '''\
             John,Doe,120 jefferson st.,Riverside, NJ, 08075\r
@@ -1321,7 +1321,7 @@ Actual:
             input='data_addresses.csv')
 
     def testCsvOutputWithHeader(self):
-        self.assertPol(
+        self.assertPyolin(
             'printer.print_header = True; df[["Last name", "SSN", "Final"]]',
             '''\
             Last name,SSN,Final\r
@@ -1344,7 +1344,7 @@ Actual:
             return df[["Last name", "SSN", "Final"]]  # type: ignore
             # pylint: enable=undefined-variable
 
-        self.assertPol(
+        self.assertPyolin(
             func,
             '''\
             Last name,SSN,Final\r
@@ -1361,7 +1361,7 @@ Actual:
             output_format='csv')
 
     def testStreamingStdinCsv(self):
-        with polPopen('parser.has_header = False; record', ['--output_format', 'csv']) as proc:
+        with pyolinPopen('parser.has_header = False; record', ['--output_format', 'csv']) as proc:
             proc.stdin.write('Raptors Toronto    58 24 0.707\n')
             proc.stdin.flush()
             with timeout(2):
@@ -1376,7 +1376,7 @@ Actual:
                     'Celtics,Boston,49,33,0.598\n')
 
     def testNumericHeader(self):
-        self.assertPol(
+        self.assertPyolin(
             'printer.print_header = True; record[0],record[2],record[7]',
             '''\
             0,1,2\r
@@ -1393,7 +1393,7 @@ Actual:
             output_format='csv')
 
     def testMarkdownOutput(self):
-        self.assertPol(
+        self.assertPyolin(
             'df[["Last name", "SSN", "Final"]]',
             '''\
             | Last name | SSN         | Final |
@@ -1411,7 +1411,7 @@ Actual:
             output_format='markdown')
 
     def testTsvOutput(self):
-        self.assertPol(
+        self.assertPyolin(
             'records',
             '''\
             Bucks	Milwaukee	60	22	0.732\r
@@ -1423,7 +1423,7 @@ Actual:
             output_format='tsv')
 
     def testMultilineInput(self):
-        self.assertPol(
+        self.assertPyolin(
             textwrap.dedent('''\
             record = 1
             record + 1\
@@ -1433,7 +1433,7 @@ Actual:
             ''')
 
     def testMultilineMixedInput(self):
-        self.assertPol(
+        self.assertPyolin(
             textwrap.dedent('''\
             record = 1; record += 1
             record += 1; record + 1
@@ -1452,7 +1452,7 @@ Actual:
             str(context.exception.__cause__))
 
     def testMultilinePythonProgram(self):
-        self.assertPol(
+        self.assertPyolin(
             textwrap.dedent('''\
             result = []
             for i in range(5):
@@ -1469,8 +1469,8 @@ Actual:
             output_format='awk')
 
     def testMarkdownWrapping(self):
-        with mock.patch.dict(os.environ, {'POL_TABLE_WIDTH': '80'}):
-            self.assertPol(
+        with mock.patch.dict(os.environ, {'PYOLIN_TABLE_WIDTH': '80'}):
+            self.assertPyolin(
                 'df[["marketplace", "review_body", "star_rating"]]',
                 '''\
                 | marketplace | review_body                                      | star_rating |
@@ -1500,8 +1500,8 @@ Actual:
                 output_format='markdown')
 
     def testMarkdownWrapping2(self):
-        with mock.patch.dict(os.environ, {'POL_TABLE_WIDTH': '80'}):
-            self.assertPol(
+        with mock.patch.dict(os.environ, {'PYOLIN_TABLE_WIDTH': '80'}):
+            self.assertPyolin(
                 'records',
                 '''\
                 | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11    | 12           | 13  | 14 |
@@ -1514,7 +1514,7 @@ Actual:
                 output_format='markdown')
 
     def testJsonOutput(self):
-        self.assertPol(
+        self.assertPyolin(
             'records',
             '''\
             [
@@ -1528,7 +1528,7 @@ Actual:
             output_format='json')
 
     def testJsonInput(self):
-        self.assertPol(
+        self.assertPyolin(
             'df',
             '''\
             | color   | value |
@@ -1546,7 +1546,7 @@ Actual:
             output_format='markdown')
 
     def testContains(self):
-        self.assertPol(
+        self.assertPyolin(
             '("green", "#0f0") in records',
             '''\
             True
@@ -1555,7 +1555,7 @@ Actual:
             input_format='json')
 
     def testSingleValueOutput(self):
-        self.assertPol(
+        self.assertPyolin(
             'len(records)',
             '''\
             | value |
@@ -1567,7 +1567,7 @@ Actual:
             output_format='markdown')
 
     def testRecordOutput(self):
-        self.assertPol(
+        self.assertPyolin(
             'records[0]',
             '''\
             | color | value |
@@ -1579,7 +1579,7 @@ Actual:
             output_format='markdown')
 
     def testRecordsWithHeader(self):
-        self.assertPol(
+        self.assertPyolin(
             'records',
             '''\
             | color   | value |
@@ -1597,7 +1597,7 @@ Actual:
             output_format='markdown')
 
     def testLinesWithHeader(self):
-        self.assertPol(
+        self.assertPyolin(
             'lines',
             '''\
             | value                                 |
@@ -1615,7 +1615,7 @@ Actual:
             output_format='markdown')
 
     def testMarkdownNonUniformColumnCount(self):
-        self.assertPol(
+        self.assertPyolin(
             'range(i) for i in range(1, 5)',
             '''\
             | value |
@@ -1628,7 +1628,7 @@ Actual:
             output_format='markdown')
 
     def testReprPrinter(self):
-        self.assertPol(
+        self.assertPyolin(
             'range(10)',
             '''\
             range(0, 10)
@@ -1636,7 +1636,7 @@ Actual:
             output_format='repr')
 
     def testReprPrinterTable(self):
-        self.assertPol(
+        self.assertPyolin(
             'records',
             '''\
             [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
@@ -1644,7 +1644,7 @@ Actual:
             output_format='repr')
 
     def testReprPrinterRecords(self):
-        self.assertPol(
+        self.assertPyolin(
             '"aloha\u2011\u2011\u2011"',
             '''\
             'aloha\u2011\u2011\u2011'
@@ -1652,7 +1652,7 @@ Actual:
             output_format='repr')
 
     def testStrPrinterRecords(self):
-        self.assertPol(
+        self.assertPyolin(
             '"aloha\u2011\u2011\u2011"',
             '''\
             aloha\u2011\u2011\u2011
@@ -1660,7 +1660,7 @@ Actual:
             output_format='str')
 
     def testStrPrinterTable(self):
-        self.assertPol(
+        self.assertPyolin(
             'records',
             '''\
             [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
@@ -1668,7 +1668,7 @@ Actual:
             output_format='str')
 
     def testSetPrinter(self):
-        self.assertPol(
+        self.assertPyolin(
             'printer = new_printer("repr"); range(10)',
             '''\
             range(0, 10)
@@ -1688,11 +1688,11 @@ Actual:
         formatted = context.exception.__cause__.formatted_tb()
         self.assertEqual(3, len(formatted), pformat(formatted))
         self.assertIn('Traceback (most recent call last)', formatted[0])
-        self.assertIn('pol_user_prog.py', formatted[1])
+        self.assertIn('pyolin_user_prog.py', formatted[1])
         self.assertIn('StopIteration', formatted[2])
 
     def testBinaryInputLen(self):
-        self.assertPol(
+        self.assertPyolin(
             'len(file)',
             '''\
             21
@@ -1701,7 +1701,7 @@ Actual:
             input='data_pickle')
 
     def testBinaryInputPickle(self):
-        self.assertPol(
+        self.assertPyolin(
             'pickle.loads(file)',
             '''\
             hello world
@@ -1710,7 +1710,7 @@ Actual:
             input='data_pickle')
 
     def testBinaryPrinter(self):
-        self.assertPol(
+        self.assertPyolin(
             'b"\\x30\\x62\\x43\\x00"',
             b'\x30\x62\x43\x00',
             input_format='binary',
@@ -1724,7 +1724,7 @@ Actual:
             str(context.exception.__cause__))
 
     def testSetFieldSeparator(self):
-        self.assertPol(
+        self.assertPyolin(
             'parser.field_separator = ","; record',
             '''\
             | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
@@ -1740,7 +1740,7 @@ Actual:
             input='data_grades_simple_csv.csv')
 
     def testSetRecordSeparator(self):
-        self.assertPol(
+        self.assertPyolin(
             'parser.record_separator = ","; record',
             '''\
             | value     |
@@ -1763,7 +1763,7 @@ Actual:
             input='data_onerow.csv')
 
     def testSetParser(self):
-        self.assertPol(
+        self.assertPyolin(
             'parser = new_parser("json"); df',
             '''\
             | color   | value |
@@ -1786,18 +1786,18 @@ Actual:
             str(context.exception.__cause__.__cause__))
 
     def testRecordsIfUndefined(self):
-        self.assertPol(
+        self.assertPyolin(
             'records if False',
             '''\
             ''')
 
     def testGenRecordsIfUndefined(self):
-        self.assertRunPol(
+        self.assertRunPyolin(
             'records if False',
             _UNDEFINED_)
 
     def testUndefinedRepr(self):
-        self.assertPol(
+        self.assertPyolin(
             '_UNDEFINED_',
             '''\
             Undefined()
@@ -1805,7 +1805,7 @@ Actual:
             output_format='repr')
 
     def testUndefinedStr(self):
-        self.assertPol(
+        self.assertPyolin(
             '_UNDEFINED_',
             '''\
             ''',
@@ -1819,7 +1819,7 @@ Actual:
             str(context.exception.__cause__.__cause__))
 
     def testBegin(self):
-        self.assertPol(
+        self.assertPyolin(
             'if BEGIN: mysum = 0; header = ("sum", "value")\n'
             'mysum += record[2]\n'
             'mysum, record[2]',
@@ -1834,7 +1834,7 @@ Actual:
             ''')
 
     def testTrailingNewline(self):
-        self.assertPol(
+        self.assertPyolin(
             'records\n',
             '''\
             | 0       | 1            | 2  | 3  | 4     |
@@ -1851,7 +1851,7 @@ Actual:
             # pylint: disable=undefined-variable
             return records  # type: ignore
             # pylint: enable=undefined-variable
-        self.assertRunPol(
+        self.assertRunPyolin(
             get_records,
             [
                 ('Bucks', 'Milwaukee', 60, 22, 0.732),
@@ -1866,12 +1866,12 @@ Actual:
             # pylint: disable=undefined-variable
             return record[0]  # type: ignore
             # pylint: enable=undefined-variable
-        self.assertRunPol(
+        self.assertRunPyolin(
             get_records,
             ['Bucks', 'Raptors', '76ers', 'Celtics', 'Pacers'])
 
     def testDoubleSemiColon(self):
-        self.assertPol(
+        self.assertPyolin(
             'record = 1; record += 1;; record += 1; record + 1',
             '''\
             4
@@ -1881,7 +1881,7 @@ Actual:
         '''
         Double semi-colon is treated as a newline
         '''
-        self.assertPol(
+        self.assertPyolin(
             'if BEGIN: sum = 0;; sum += record[2]; sum, record[2]',
             '''\
             | 0   | 1  |
@@ -1894,10 +1894,10 @@ Actual:
             ''')
 
     def testUndefinedIsFalse(self):
-        self.assertRunPol('bool(_UNDEFINED_)', False)
+        self.assertRunPyolin('bool(_UNDEFINED_)', False)
 
     def testEndWithDoubleSemiColon(self):
-        self.assertPol(
+        self.assertPyolin(
             'record[2];;',
             '''\
             | value |
@@ -1911,14 +1911,14 @@ Actual:
 
     def testSysArgv(self):
         '''
-        sys.argv should be shifted, so sys.argv[1] should be the first one after the pol prog
+        sys.argv should be shifted, so sys.argv[1] should be the first one after the pyolin prog
         '''
-        self.assertPol(
+        self.assertPyolin(
             'sys.argv',
             '''\
             | value   |
             | ------- |
-            | pol     |
+            | pyolin  |
             | testing |
             | 1       |
             | 2       |

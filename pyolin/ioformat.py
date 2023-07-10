@@ -389,7 +389,7 @@ class MarkdownPrinter(Printer):
         if sys.stdout.isatty():
             available_width, _ = shutil.get_terminal_size((100, 24))
         else:
-            available_width = int(os.getenv('POL_TABLE_WIDTH', 100))
+            available_width = int(os.getenv('PYOLIN_TABLE_WIDTH', 100))
         # Subtract number of characters used by markdown
         available_width -= 2 + 3 * (len(header) - 1) + 2
         remaining_space = available_width

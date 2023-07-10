@@ -70,7 +70,7 @@ def _replace_with_newline(tokens: List[tokenize.TokenInfo], pos: int) -> None:
 
 def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
     '''
-    Parse the given pol program into the exec statements and eval statements that can be evaluated
+    Parse the given pyolin program into the exec statements and eval statements that can be evaluated
     directly, applying the necessary syntax transformations as necessary.
     '''
     prog_io = io.StringIO(prog)
@@ -135,13 +135,13 @@ class Prog:
 
     def __init__(self, prog: Any):
         if hasattr(prog, '__code__'):
-            self._exec = compile('', filename='pol_user_prog.py', mode='exec')
+            self._exec = compile('', filename='pyolin_user_prog.py', mode='exec')
             self._eval = prog.__code__
         else:
             exec_code, eval_code = _parse(prog)
             debug('Resulting AST', ast.dump(exec_code), ast.dump(eval_code))
-            self._exec = compile(exec_code, filename='pol_user_prog.py', mode='exec')
-            self._eval = compile(eval_code, filename='pol_user_prog.py', mode='eval')
+            self._exec = compile(exec_code, filename='pyolin_user_prog.py', mode='exec')
+            self._eval = compile(eval_code, filename='pyolin_user_prog.py', mode='eval')
 
     def exec(self, globals: Dict[str, Any]) -> Any:
         try:

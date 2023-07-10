@@ -1,77 +1,77 @@
-# pol
+# Pyolin
 
-![CI](https://github.com/mauricelam/pol/actions/workflows/python-package.yml/badge.svg)
+![CI](https://github.com/mauricelam/pyolin/actions/workflows/python-package.yml/badge.svg)
 
 Tool to easily write Python one-liners
 
-Pol processes data from stdin or a given file, evaluates the given input `prog` and prints the result.
+Pyolin processes data from stdin or a given file, evaluates the given input `prog` and prints the result.
 
 Example:
 ```sh
-cat table | pol 'record[0] + record[1] if record[2] > 50'
+cat table | pyolin 'record[0] + record[1] if record[2] > 50'
 ```
 
 ## Syntax
 
-The first argument of pol is the program. The program is a valid Python expression, optionally preceded by zero or more Python statements. Informally, this means the last part of your program must evaluate to a value. For example, the program can be `42`, `1 + 3`, or `list(range(10))`, but it cannot end in `a = 10` or `raise Exception()`.
+The first argument of Pyolin is the program. The program is a valid Python expression, optionally preceded by zero or more Python statements. Informally, this means the last part of your program must evaluate to a value. For example, the program can be `42`, `1 + 3`, or `list(range(10))`, but it cannot end in `a = 10` or `raise Exception()`.
 
 For convenience, a few extensions were made to the Python syntax.
 
 1. For the expression part of the program, you may use generator expressions without putting them in parentheses. For example, you can say
 
     ```sh
-    pol 'len(r) for r in records'  # Valid in pol
+    pyolin 'len(r) for r in records'  # Valid in pyolin
     ```
-    
+
     instead of
-    
+
     ```sh
-    pol '(len(r) for r in records)'  # Longer, but also valid in pol
+    pyolin '(len(r) for r in records)'  # Longer, but also valid in pyolin
     ```
 
 2. The [conditional expression syntax](https://www.python.org/dev/peps/pep-0308/) `<expression1> if <condition> else <expression2>` is extended such that `else <expression2>` can be omitted, in which case its value will be ignored. For example, you can say
 
    ```sh
-   pol 'record if record[2] > 10'
+   pyolin 'record if record[2] > 10'
    ```
-   
+
    to get the list of all records for which the second field is greater than 10. Under the hood, a special "_UNDEFINED_" value is returned for this expression, which is skipped when the result is printed. This is especially useful with record-scoped programs.
-   
+
 ## Scopes
 
-Pol has a concept of scope, which allows it to interpret the program differently based on which variables are being accessed.
+Pyolin has a concept of scope, which allows it to interpret the program differently based on which variables are being accessed.
 
 ### Table scope
 
-If any of the variables `lines`, `records`, `file`, `contents`, and `df` are accessed, pol will run in table scoped mode, which means the given program will be run only once, and the result of the evaluation will be printed.
+If any of the variables `lines`, `records`, `file`, `contents`, and `df` are accessed, pyolin will run in table scoped mode, which means the given program will be run only once, and the result of the evaluation will be printed.
 
 Examples:
 
 ```sh
-pol 'sum(r[0] for r in records) / len(records)'  # Calculate the average of the first field
+pyolin 'sum(r[0] for r in records) / len(records)'  # Calculate the average of the first field
 ```
 
 ```sh
-pol 'len(file)'  # Get the length of the given file
+pyolin 'len(file)'  # Get the length of the given file
 ```
 
 ### Record scope
 
-If any of the variables `record`, `fields`, `line` are accessed, pol will run in record scoped mode. In this mode pol will loop through all the records from the incoming file, running the given program once per each line of the file. The results of executing on each record are then gathered into a list as the overall result.
+If any of the variables `record`, `fields`, `line` are accessed, pyolin will run in record scoped mode. In this mode Pyolin will loop through all the records from the incoming file, running the given program once per each line of the file. The results of executing on each record are then gathered into a list as the overall result.
 
 Examples:
 
 ```sh
-pol 'len(line)'  # Get the length of each line
+pyolin 'len(line)'  # Get the length of each line
 ```
 
 ```sh
-pol 'record if record[0] > 10'  # Get all records where the first field is greater than 10
+pyolin 'record if record[0] > 10'  # Get all records where the first field is greater than 10
 ```
 
 ## Data format
 
-In pol, the input file is treated as a table, which consists of many
+In Pyolin, the input file is treated as a table, which consists of many
 records (lines). Each record is then consisted of many fields (columns).
 The separator for records and fields are configurable through the
 `--record_separator` and `--field_separator` options.
@@ -84,7 +84,7 @@ Available variables:
     - `line` – Alias for `record.str`.
 
     When referencing a variable in record scope, `prog` must not access
-    any other variables in table scope. In this mode, pol iterates through
+    any other variables in table scope. In this mode, pyolin iterates through
     each record from the input file and prints the result of `prog`.
 
   - Table scoped:
@@ -172,7 +172,7 @@ A printer that prints the result out using the Python built-in `str` function.
 
 A printer that writes the raw binary the result, expected to be bytes or bytearray, to stdout.
 
-## Motivation for creating pol
+## Motivation for creating Pyolin
 
 Python is a powerful language that is easy to read and write, and it has lots of tools, built-in or libraries that helps with text and data manipulation extremely quickly. However, there are not a lot of usage for Python in the command line in the form of quick one-liner scripts. To start using Python in the command line you have to be somewhat committed in creating a script file.
 

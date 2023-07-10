@@ -122,7 +122,7 @@ def _execute_internal(prog, *args,
         'pd': Item(lambda: importlib.import_module('pandas')),
         'np': Item(lambda: importlib.import_module('numpy')),
         'csv': Item(lambda: importlib.import_module('csv')),
-        'pol': Item(lambda: importlib.import_module('pol')),
+        'pyolin': Item(lambda: importlib.import_module('pyolin')),
 
         # Writeable
         'printer': printer,
@@ -131,7 +131,7 @@ def _execute_internal(prog, *args,
     })
 
     # Shift argv results
-    sys.argv = ['pol', *args]
+    sys.argv = ['pyolin', *args]
 
     try:
         result = prog.exec(global_dict)
@@ -146,11 +146,11 @@ def _execute_internal(prog, *args,
 
 def run(*args, **kwargs):
     '''
-    Run pol from another Python script. This is designed to ease the transition from the one-liner
-    to a more full-fledged script file. By running pol in Python, you get the results in Python
+    Run pyolin from another Python script. This is designed to ease the transition from the one-liner
+    to a more full-fledged script file. By running pyolin in Python, you get the results in Python
     list or objects, while still keeping the input parsing and output formatting capabilities of
-    pol. Serious scripts should migrate away from those as well, perhaps outputting json and then
-    using pol as a data-formatting pass-through.
+    pyolin. Serious scripts should migrate away from those as well, perhaps outputting json and then
+    using pyolin as a data-formatting pass-through.
     '''
     result, _ = _execute_internal(*args, **kwargs)
     if isinstance(result, (str, bytes)):
@@ -173,15 +173,15 @@ def _command_line(prog, *_REMAINDER_,
         input_format='awk',
         output_format='auto'):
     '''
-    pol - Python one liners to easily parse and process data in Python.
+    pyolin - Python one liners to easily parse and process data in Python.
 
-    Pol processes text information from stdin or a given file and evaluates
+    Pyolin processes text information from stdin or a given file and evaluates
     the given input `prog` and prints the result.
 
     Example:
-        pol 'record[0] + record[1] if record[2] > 50'
+        pyolin 'record[0] + record[1] if record[2] > 50'
 
-    In pol, the input file is treated as a table, which consists of many
+    In Pyolin, the input file is treated as a table, which consists of many
     records (lines). Each record is then consisted of many fields (columns).
     The separator for records and fields are configurable through the
     --record_separator and --field_separator options.
@@ -194,7 +194,7 @@ def _command_line(prog, *_REMAINDER_,
         line – Alias for `record.str`.
 
         When referencing a variable in record scope, `prog` must not access
-        any other variables in table scope. In this mode, pol iterates through
+        any other variables in table scope. In this mode, Pyolin iterates through
         each record from the input file and prints the result of `prog`.
 
       - Table scoped:
