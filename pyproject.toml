@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pyolin"
+version = "0.0.3"
+authors = [
+  { name="Maurice Lam", email="mauriceprograms@gmail.com" },
+]
+description = "Tool to easily write Python one-liners"
+readme = "README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "hashbang >= 0.1.14",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/mauricelam/pyolin"
+"Bug Tracker" = "https://github.com/mauricelam/pyolin/issues"

@@ -1,6 +1,7 @@
 # Pyolin
 
 ![CI](https://github.com/mauricelam/pyolin/actions/workflows/python-package.yml/badge.svg)
+[![PyPI](https://img.shields.io/pypi/v/pyolin.svg?color=%230073b7)](https://pypi.org/project/pyolin/)
 
 Tool to easily write Python one-liners
 
