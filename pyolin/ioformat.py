@@ -112,7 +112,7 @@ class CustomSniffer(csv.Sniffer):
     def __init__(self, force_dialect=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._force_dialect = force_dialect
-        self.dialect: Optional[Union[csv.Dialect, Type[csv.Dialect]]] = None
+        self.dialect: csv.Dialect|Type[csv.Dialect]|None = None
         self.dialect_doublequote_decided = False
 
     def sniff(self, *args, **kwargs):
@@ -168,7 +168,7 @@ class CsvReader:
 class CsvParser(AbstractParser):
     default_fs = r','
 
-    def __init__(self, *args, dialect: Union[str, csv.Dialect, Type[csv.Dialect]]=None, **kwargs):
+    def __init__(self, *args, dialect: Union[str, csv.Dialect, Type[csv.Dialect], None]=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.dialect = dialect
 

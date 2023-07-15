@@ -26,6 +26,7 @@ class Field(str):
             except ValueError:
                 return float(self)
         except ValueError:
+            #pylint:disable=raise-missing-from
             raise ValueError(f'Cannot convert "{self}" to int or float')
 
     def _coerce_with_type_check(self, other: Any) -> Tuple[Union[Number, str], Any]:

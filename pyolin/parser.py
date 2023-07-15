@@ -5,7 +5,7 @@ import token
 import tokenize
 import traceback
 from types import CodeType
-from typing import Any, Dict, Iterable, List, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 from .util import debug, NoMoreRecords
 

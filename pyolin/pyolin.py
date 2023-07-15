@@ -1,11 +1,11 @@
 import argparse
-import collections
 import importlib
 import itertools
 import re
 import sys
 
 from contextlib import contextmanager
+from typing import IO, Any, Callable, Generator, Iterable
 from hashbang import command, Argument
 
 from .util import (BoxedItem, LazyItem, Item, ItemDict, StreamingSequence, _UNDEFINED_, NoMoreRecords)
@@ -15,7 +15,7 @@ from .parser import Prog
 
 
 @contextmanager
-def get_io(input_file, *, binary=False):
+def get_io(input_file:str, *, binary:bool=False) -> Generator[IO[Any], None, None]:
     if input_file:
         mode = 'rb' if binary else 'r'
         with open(input_file, mode) as f:
@@ -25,7 +25,7 @@ def get_io(input_file, *, binary=False):
 
 
 class RecordScoped(LazyItem):
-    def __init__(self, generator, *, on_accessed):
+    def __init__(self, generator: RecordSequence, *, on_accessed: Callable[[], None]):
         super().__init__(self._get_first_time, on_accessed=on_accessed)
         self._iter = iter(generator)
 
@@ -96,6 +96,7 @@ def _execute_internal(prog, *args,
     try:
         printer = new_printer(output_format)
     except KeyError:
+        #pylint:disable=raise-missing-from
         raise ValueError(f'Unrecognized output format "{output_format}"')
     global_dict = ItemDict({
         # Record scoped
@@ -146,16 +147,16 @@ def _execute_internal(prog, *args,
 
 def run(*args, **kwargs):
     '''
-    Run pyolin from another Python script. This is designed to ease the transition from the one-liner
-    to a more full-fledged script file. By running pyolin in Python, you get the results in Python
-    list or objects, while still keeping the input parsing and output formatting capabilities of
-    pyolin. Serious scripts should migrate away from those as well, perhaps outputting json and then
-    using pyolin as a data-formatting pass-through.
+    Run pyolin from another Python script. This is designed to ease the transition from
+    the one-liner to a more full-fledged script file. By running pyolin in Python, you get the
+    results in Python list or objects, while still keeping the input parsing and output formatting
+    capabilities of pyolin. Serious scripts should migrate away from those as well, perhaps
+    outputting json and then using pyolin as a data-formatting pass-through.
     '''
     result, _ = _execute_internal(*args, **kwargs)
     if isinstance(result, (str, bytes)):
         return result
-    if isinstance(result, collections.abc.Iterable):
+    if isinstance(result, Iterable):
         return list(result)
     else:
         return result

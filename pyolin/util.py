@@ -4,7 +4,7 @@ import itertools
 import os
 import sys
 import importlib
-from typing import Callable, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import Any, Callable, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, TypeVar, Union
 
 
 def cache(func):
@@ -15,7 +15,10 @@ def cached_property(func):
     return property(cache(func))
 
 
-def debug(*args):
+def debug(*args: Any) -> None:
+    '''
+    Print a debug statement. These are printed to the console if the $DEBUG env var is set
+    '''
     if os.getenv('DEBUG'):
         print(*args, file=sys.stderr)
 

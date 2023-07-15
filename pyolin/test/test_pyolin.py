@@ -1,5 +1,6 @@
 import contextlib
 import os
+from typing import Any, Callable, Sequence, Union
 from pyolin.parser import UserError
 from pyolin import pyolin
 from pyolin.util import _UNDEFINED_
@@ -76,11 +77,11 @@ Actual:
 ---
 ''')
 
-    def assertRunPyolin(self, prog, expected, *, input='data_nba.txt', **kwargs):
+    def assertRunPyolin(self, prog: Union[str, Callable[[], Any]], expected: Any, *, input: str='data_nba.txt', **kwargs):
         actual = run_pyolin(prog, input=input, **kwargs)
         self.assertEqual(actual, expected)
 
-    def assertPyolin(self, prog, expected, *, input='data_nba.txt', extra_args=[], **kwargs):
+    def assertPyolin(self, prog: str, expected: str, *, input: str='data_nba.txt', extra_args: Sequence[str]=(), **kwargs):
         actual = run_cli(prog, input=input, extra_args=extra_args, **kwargs)
         if isinstance(expected, str):
             self._myassert(actual.getvalue(), expected, prog, input)
@@ -1930,3 +1931,4 @@ Actual:
 
     # TODOs:
     # Bash / Zsh autocomplete integration
+    # Automatic input type detection
