@@ -19,12 +19,12 @@ class HasHeader:
 
 
 class Record(tuple):
-    def __new__(cls, *args, recordstr='', header=None):
+    def __new__(cls, *args, recordstr="", header=None):
         return super().__new__(
-            cls,
-            tuple(Field(f, header=h) for f, h in zip_longest(args, header or ())))
+            cls, tuple(Field(f, header=h) for f, h in zip_longest(args, header or ()))
+        )
 
-    def __init__(self, *args, recordstr='', header=None):
+    def __init__(self, *args, recordstr="", header=None):
         self.str = recordstr
 
 

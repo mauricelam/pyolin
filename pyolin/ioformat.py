@@ -21,35 +21,35 @@ from .field import Field
 from . import header_detector
 
 __all__ = [
-    'AbstractParser',
-    'AwkParser',
-    'CsvParser',
-    'JsonParser',
-    'BinaryParser',
-    'AutoPrinter',
-    'create_parser',
-    'PARSERS',
-    'Printer',
-    'AutoPrinter',
-    'AwkPrinter',
-    'CsvPrinter',
-    'MarkdownPrinter',
-    'JsonPrinter',
-    'ReprPrinter',
-    'StrPrinter',
-    'BinaryPrinter',
-    'new_printer',
-    'PRINTERS',
+    "AbstractParser",
+    "AwkParser",
+    "CsvParser",
+    "JsonParser",
+    "BinaryParser",
+    "AutoPrinter",
+    "create_parser",
+    "PARSERS",
+    "Printer",
+    "AutoPrinter",
+    "AwkPrinter",
+    "CsvPrinter",
+    "MarkdownPrinter",
+    "JsonPrinter",
+    "ReprPrinter",
+    "StrPrinter",
+    "BinaryPrinter",
+    "new_printer",
+    "PRINTERS",
 ]
 
 
 def _gen_split(stream, delimiter):
-    '''
+    """
     Read the stream "line by line", where line is defined by the delimiter.
 
     list(_gen_split(stream, delimiter)) is similar to stream.read().split(delimiter)
-    '''
-    buf = ''
+    """
+    buf = ""
     while True:
         chunk = stream.read(1)
         if not chunk:
@@ -61,13 +61,13 @@ def _gen_split(stream, delimiter):
             match = re.search(delimiter, buf)
             if not match:
                 break
-            yield buf[:match.start()]
-            buf = ''
+            yield buf[: match.start()]
+            buf = ""
 
 
 class AbstractParser(abc.ABC):
-    default_fs = r'[ \t]+'
-    default_rs = r'\n'
+    default_fs = r"[ \t]+"
+    default_rs = r"\n"
     binary = False
 
     def __init__(self, record_separator: str, field_separator: str):
@@ -96,9 +96,9 @@ class AbstractParser(abc.ABC):
 
     @abc.abstractmethod
     def gen_records(self, stream):
-        '''
+        """
         Yields records in the format of (tuple, str)
-        '''
+        """
         raise NotImplementedError()
 
 
@@ -112,7 +112,7 @@ class CustomSniffer(csv.Sniffer):
     def __init__(self, force_dialect=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._force_dialect = force_dialect
-        self.dialect: csv.Dialect|Type[csv.Dialect]|None = None
+        self.dialect: csv.Dialect | Type[csv.Dialect] | None = None
         self.dialect_doublequote_decided = False
 
     def sniff(self, *args, **kwargs):
@@ -134,7 +134,7 @@ class CustomSniffer(csv.Sniffer):
             return False
         elif '\\"' in line:
             self.dialect.doublequote = False
-            self.dialect.escapechar = '\\'
+            self.dialect.escapechar = "\\"
             return True
 
 
@@ -166,9 +166,14 @@ class CsvReader:
 
 
 class CsvParser(AbstractParser):
-    default_fs = r','
+    default_fs = r","
 
-    def __init__(self, *args, dialect: Union[str, csv.Dialect, Type[csv.Dialect], None]=None, **kwargs):
+    def __init__(
+        self,
+        *args,
+        dialect: Union[str, csv.Dialect, Type[csv.Dialect], None] = None,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
         self.dialect = dialect
 
@@ -199,7 +204,7 @@ class JsonParser(AbstractParser):
         records = json.load(stream)
         for i, r in enumerate(records):
             if not i:
-                yield r.keys(), ''
+                yield r.keys(), ""
             yield r.values(), json.dumps(r)
 
 
@@ -207,25 +212,29 @@ class BinaryParser:
     binary = True
 
     def records(self, stream):
-        raise AttributeError('Record based attributes are not supported in binary input mode')
+        raise AttributeError(
+            "Record based attributes are not supported in binary input mode"
+        )
 
 
 PARSERS = {
-    'awk': AwkParser,
-    'csv': CsvParser,
-    'csv_excel': lambda rs, fs: CsvParser(rs, fs, dialect=csv.excel),
-    'csv_unix': lambda rs, fs: CsvParser(rs, fs, dialect=csv.unix_dialect),
-    'tsv': lambda rs, fs: CsvParser(rs, '\t'),
-    'json': JsonParser,
-    'binary': lambda rs, fs: BinaryParser(),
+    "awk": AwkParser,
+    "csv": CsvParser,
+    "csv_excel": lambda rs, fs: CsvParser(rs, fs, dialect=csv.excel),
+    "csv_unix": lambda rs, fs: CsvParser(rs, fs, dialect=csv.unix_dialect),
+    "tsv": lambda rs, fs: CsvParser(rs, "\t"),
+    "json": JsonParser,
+    "binary": lambda rs, fs: BinaryParser(),
 }
 
 
-def create_parser(input_format, record_separator, field_separator) -> Callable[[], AbstractParser]:
+def create_parser(
+    input_format, record_separator, field_separator
+) -> Callable[[], AbstractParser]:
     try:
         return PARSERS[input_format](record_separator, field_separator)
     except KeyError as e:
-        raise ValueError(f'Unknown input format {input_format}') from e
+        raise ValueError(f"Unknown input format {input_format}") from e
 
 
 class Printer(abc.ABC):
@@ -237,9 +246,9 @@ class Printer(abc.ABC):
         if isinstance(value, str):
             return value  # String is a sequence too. Handle it first
         elif isinstance(value, bytes):
-            return value.decode('utf-8', 'backslashreplace')
+            return value.decode("utf-8", "backslashreplace")
         elif isinstance(value, float):
-            return '{:.6g}'.format(value)
+            return "{:.6g}".format(value)
         else:
             return str(value)
 
@@ -259,7 +268,7 @@ class Printer(abc.ABC):
                 h = c.header
             if not h:
                 if len(first_column) == 1:
-                    h = 'value'
+                    h = "value"
                 else:
                     h = str(i)
             header.append(h)
@@ -268,7 +277,7 @@ class Printer(abc.ABC):
     def print_result(self, result, *, header=None):
         try:
             for line in self.gen_result(result, header=header):
-                print(line, flush=True, end='')
+                print(line, flush=True, end="")
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
             sys.exit(141)
@@ -277,7 +286,7 @@ class Printer(abc.ABC):
         if result is _UNDEFINED_:
             return
         header = header or HasHeader.get(result)
-        if 'pandas' in sys.modules:
+        if "pandas" in sys.modules:
             # Re-import it only if it is already imported before. If not the result can't be a
             # dataframe.
             import pandas as pd
@@ -288,8 +297,7 @@ class Printer(abc.ABC):
             result = (self.format_record(row) for _, row in result.iterrows())
         elif isinstance(result, collections.abc.Iterable):
             if not isinstance(result, (str, Record, tuple, bytes)):
-                result = (self.format_record(r)
-                          for r in result if r is not _UNDEFINED_)
+                result = (self.format_record(r) for r in result if r is not _UNDEFINED_)
                 result, result_tee = itertools.tee(result)
                 first_column = list(next(result_tee, []))
                 header = header or self._generate_header(first_column)
@@ -297,7 +305,7 @@ class Printer(abc.ABC):
                 result = (self.format_record(result),)
                 header = header or self._generate_header(result[0])
         else:
-            header = header or ['value']
+            header = header or ["value"]
             result = (self.format_record(result),)
 
         yield from self.format_table(result, header)
@@ -305,10 +313,10 @@ class Printer(abc.ABC):
 
 class AutoPrinter(Printer):
     def gen_result(self, result, *, header=None):
-        printer_type = 'awk'
+        printer_type = "awk"
         if isinstance(result, collections.abc.Iterable):
             if not isinstance(result, (str, Record, tuple, bytes)):
-                printer_type = 'markdown'
+                printer_type = "markdown"
         self._printer = new_printer(printer_type)
         yield from super().gen_result(result, header=header)
 
@@ -318,8 +326,8 @@ class AutoPrinter(Printer):
 
 class AwkPrinter(Printer):
     def __init__(self):
-        self.record_separator = '\n'
-        self.field_separator = ' '
+        self.record_separator = "\n"
+        self.field_separator = " "
 
     def format_table(self, table, header):
         for record in table:
@@ -327,7 +335,7 @@ class AwkPrinter(Printer):
 
 
 class CsvPrinter(Printer):
-    def __init__(self, *, print_header=False, delimiter=',', dialect=csv.excel):
+    def __init__(self, *, print_header=False, delimiter=",", dialect=csv.excel):
         self.print_header = print_header
         self.delimiter = delimiter
         self.dialect = dialect
@@ -337,7 +345,7 @@ class CsvPrinter(Printer):
         try:
             self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
         except csv.Error as e:
-            if 'unknown dialect' in str(e):
+            if "unknown dialect" in str(e):
                 raise RuntimeError(f'Unknown dialect "{self.dialect}"') from e
             raise RuntimeError(e) from e
         if self.print_header:
@@ -356,31 +364,40 @@ class CsvPrinter(Printer):
 
 class MarkdownRowFormat:
     def __init__(self, widths):
-        self._width_formats = ['{:%d}' % w for w in widths]
-        self._row_template = '| ' + ' | '.join(self._width_formats) + ' |'
-        self._cont_row_template = ': ' + ' : '.join(self._width_formats) + ' :'
+        self._width_formats = ["{:%d}" % w for w in widths]
+        self._row_template = "| " + " | ".join(self._width_formats) + " |"
+        self._cont_row_template = ": " + " : ".join(self._width_formats) + " :"
         self._wrappers = [
             textwrap.TextWrapper(
-                width=w, expand_tabs=False, replace_whitespace=False,
-                drop_whitespace=False)
+                width=w,
+                expand_tabs=False,
+                replace_whitespace=False,
+                drop_whitespace=False,
+            )
             for w in widths
         ]
 
     def format(self, cells):
-        cell_lines = [wrapper.wrap(cell) if wrapper else [cell]
-                      for wrapper, cell in zip_longest(self._wrappers, cells)]
-        line_cells = zip_longest(*cell_lines, fillvalue='')
-        result = ''
+        cell_lines = [
+            wrapper.wrap(cell) if wrapper else [cell]
+            for wrapper, cell in zip_longest(self._wrappers, cells)
+        ]
+        line_cells = zip_longest(*cell_lines, fillvalue="")
+        result = ""
         for i, line_cell in enumerate(line_cells):
             # If there are extra columns that are not found in the header, also print them out.
             # While that's not valid markdown, it's better than silently discarding the values.
             extra_length = len(line_cell) - len(self._width_formats)
             if not i:
-                template = self._row_template + ''.join(' {} |' for _ in range(extra_length))
-                result += template.format(*line_cell) + '\n'
+                template = self._row_template + "".join(
+                    " {} |" for _ in range(extra_length)
+                )
+                result += template.format(*line_cell) + "\n"
             else:
-                template = self._cont_row_template + ''.join(' {} :' for _ in range(extra_length))
-                result += self._cont_row_template.format(*line_cell) + '\n'
+                template = self._cont_row_template + "".join(
+                    " {} :" for _ in range(extra_length)
+                )
+                result += self._cont_row_template.format(*line_cell) + "\n"
         return result
 
 
@@ -389,13 +406,15 @@ class MarkdownPrinter(Printer):
         if sys.stdout.isatty():
             available_width, _ = shutil.get_terminal_size((100, 24))
         else:
-            available_width = int(os.getenv('PYOLIN_TABLE_WIDTH', 100))
+            available_width = int(os.getenv("PYOLIN_TABLE_WIDTH", 100))
         # Subtract number of characters used by markdown
         available_width -= 2 + 3 * (len(header) - 1) + 2
         remaining_space = available_width
         record_lens = zip(*[[len(c) for c in record] for record in table])
-        lens = {i: max(len(h), *c_lens)
-                for i, (h, c_lens) in enumerate(zip(header, record_lens))}
+        lens = {
+            i: max(len(h), *c_lens)
+            for i, (h, c_lens) in enumerate(zip(header, record_lens))
+        }
         widths = [0] * len(header)
         while lens:
             to_del = []
@@ -424,7 +443,7 @@ class MarkdownPrinter(Printer):
         if not header:
             return
         yield row_format.format(header)
-        yield '| ' + ' | '.join('-' * w for w in widths) + ' |\n'
+        yield "| " + " | ".join("-" * w for w in widths) + " |\n"
         for record in table1:
             yield row_format.format(record)
 
@@ -440,18 +459,17 @@ class JsonPrinter(Printer):
                 except ValueError:
                     return val
 
-        yield '[\n'
+        yield "[\n"
         for i, record in enumerate(table):
             if i:
-                yield ',\n'
-            yield json.dumps(
-                {h: maybe_to_numeric(f) for h, f in zip(header, record)})
-        yield '\n]\n'
+                yield ",\n"
+            yield json.dumps({h: maybe_to_numeric(f) for h, f in zip(header, record)})
+        yield "\n]\n"
 
 
 class ReprPrinter(Printer):
     def gen_result(self, result, *, header=None):
-        yield repr(result) + '\n'
+        yield repr(result) + "\n"
 
     def format_table(self, table, header):
         raise NotImplementedError()
@@ -461,7 +479,7 @@ class StrPrinter(Printer):
     def gen_result(self, result, *, header=None):
         result = str(result)
         if result:
-            yield result + '\n'
+            yield result + "\n"
 
     def format_table(self, table, header):
         raise NotImplementedError()
@@ -484,17 +502,17 @@ class BinaryPrinter(Printer):
 
 
 PRINTERS = {
-    'auto': AutoPrinter,
-    'awk': AwkPrinter,
-    'unix': AwkPrinter,
-    'csv': CsvPrinter,
-    'tsv': lambda: CsvPrinter(delimiter='\t'),
-    'markdown': MarkdownPrinter,
-    'table': MarkdownPrinter,
-    'json': JsonPrinter,
-    'repr': ReprPrinter,
-    'str': StrPrinter,
-    'binary': BinaryPrinter,
+    "auto": AutoPrinter,
+    "awk": AwkPrinter,
+    "unix": AwkPrinter,
+    "csv": CsvPrinter,
+    "tsv": lambda: CsvPrinter(delimiter="\t"),
+    "markdown": MarkdownPrinter,
+    "table": MarkdownPrinter,
+    "json": JsonPrinter,
+    "repr": ReprPrinter,
+    "str": StrPrinter,
+    "binary": BinaryPrinter,
 }
 
 

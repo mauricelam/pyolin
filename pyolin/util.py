@@ -4,7 +4,19 @@ import itertools
 import os
 import sys
 import importlib
-from typing import Any, Callable, Generic, Iterable, Iterator, List, Optional, Sequence, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Generic,
+    Iterable,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 
 def cache(func):
@@ -16,19 +28,19 @@ def cached_property(func):
 
 
 def debug(*args: Any) -> None:
-    '''
+    """
     Print a debug statement. These are printed to the console if the $DEBUG env var is set
-    '''
-    if os.getenv('DEBUG'):
+    """
+    if os.getenv("DEBUG"):
         print(*args, file=sys.stderr)
 
 
 class Undefined:
     def __str__(self):
-        return ''
+        return ""
 
     def __repr__(self):
-        return 'Undefined()'
+        return "Undefined()"
 
     def __bool__(self):
         return False
@@ -41,13 +53,16 @@ class NoMoreRecords(StopIteration):
     pass
 
 
-T = TypeVar('T')
+T = TypeVar("T")
+
+
 class StreamingSequence(Sequence[T]):
-    '''
+    """
     An iterator that also implements the sequence interface. This is "streaming" in the sense that
     it will try its best give the results as soon as we can get the answer from the available input,
     instead of eagerly looking through all of the items in the given iterator.
-    '''
+    """
+
     def __init__(self, iterator):
         self._iter = iterator
         self._list = None
@@ -73,7 +88,7 @@ class StreamingSequence(Sequence[T]):
         try:
             return next(itertools.islice(iter(self), key, key + 1))
         except StopIteration:
-            raise IndexError('list index out of range')
+            raise IndexError("list index out of range")
 
     def __reversed__(self) -> Iterable[T]:
         # Not necessary, but is probably (slightly) faster than the default
@@ -97,9 +112,10 @@ class StreamingSequence(Sequence[T]):
 
 
 class ItemDict(dict):
-    '''
+    """
     A dict that can evaluate LazyItems on demand when they are accessed.
-    '''
+    """
+
     def __getitem__(self, key):
         value = dict.__getitem__(self, key)
         if isinstance(value, Item):
@@ -114,7 +130,7 @@ class ItemDict(dict):
                 return
         except KeyError:
             pass
-        debug(f'dict setting {key}={value}')
+        debug(f"dict setting {key}={value}")
         return super().__setitem__(key, value)
 
     def __missing__(self, key):
@@ -124,7 +140,9 @@ class ItemDict(dict):
             raise KeyError(key)
 
 
-I = TypeVar('I')
+I = TypeVar("I")
+
+
 class Item(Generic[I]):
     def __init__(self, func: Callable[..., I]):
         self.func = func
@@ -146,9 +164,9 @@ class BoxedItem(SettableItem[I]):
         self.frozen = False
 
     def set(self, value: I) -> None:
-        debug('setting boxed value ', value)
+        debug("setting boxed value ", value)
         if self.frozen:
-            raise RuntimeError('Cannot set parser after it has been used')
+            raise RuntimeError("Cannot set parser after it has been used")
         self.value = value
 
     def __call__(self) -> I:
@@ -159,10 +177,16 @@ class BoxedItem(SettableItem[I]):
 
 
 class LazyItem(Item[I]):
-    '''
+    """
     Item for ItemDict that is evaluated on demand.
-    '''
-    def __init__(self, func: Callable[..., I], *, on_accessed: Optional[Callable[[], None]]=None):
+    """
+
+    def __init__(
+        self,
+        func: Callable[..., I],
+        *,
+        on_accessed: Optional[Callable[[], None]] = None,
+    ):
         super().__init__(func)
         self._val = None
         self._cached = False

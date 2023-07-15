@@ -1,36 +1,29 @@
 import contextlib
 import io
 import signal
-from unittest import mock
 
 
 class ErrorWithStderr(Exception):
-
     def __init__(self, stderr, *, errmsg=None):
         self.stderr = stderr
         self.errmsg = errmsg
 
     def __str__(self):
-        result = ['', self.errmsg]
+        result = ["", self.errmsg]
         if self.stderr:
-            result += [
-                '',
-                '===== STDERR =====',
-                str(self.stderr),
-                '=================='
-            ]
+            result += ["", "===== STDERR =====", str(self.stderr), "=================="]
         if self.__cause__:
             result += [
-                '',
-                '===== ERROR =====',
+                "",
+                "===== ERROR =====",
                 str(self.__cause__),
-                '================='
+                "=================",
             ]
-        return '\n'.join(result)
+        return "\n".join(result)
 
 
 class timeout:
-    def __init__(self, seconds, error_message='Timeout'):
+    def __init__(self, seconds, error_message="Timeout"):
         self.seconds = seconds
         self.error_message = error_message
 
@@ -51,7 +44,7 @@ class TextIO(io.TextIOWrapper):
         super().__init__(self._io, write_through=True, **kwargs)
 
     def getvalue(self):
-        return self._io.getvalue().decode('utf-8')
+        return self._io.getvalue().decode("utf-8")
 
     def getbytes(self):
         return self._io.getvalue()

@@ -42,9 +42,9 @@ def has_header(stream):
                 else:
                     # type is inconsistent, remove column from
                     # consideration
-                    columnTypes[col] = 'Disqualified'
+                    columnTypes[col] = "Disqualified"
 
-    debug('column types', columnTypes)
+    debug("column types", columnTypes)
     # finally, compare results against first row and "vote"
     # on whether it's a header
     hasHeader = 0
@@ -54,13 +54,13 @@ def has_header(stream):
                 hasHeader += 1
             else:
                 hasHeader -= 1
-        elif colType != 'Disqualified' and colType is not None:  # attempt typecast
+        elif colType != "Disqualified" and colType is not None:  # attempt typecast
             try:
                 colType(header[col])
             except (ValueError, TypeError):
                 hasHeader += 1
             else:
                 hasHeader -= 1
-    debug('hasHeader', hasHeader)
+    debug("hasHeader", hasHeader)
 
     return hasHeader > 0
