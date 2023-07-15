@@ -237,7 +237,7 @@ class Printer(abc.ABC):
         if isinstance(value, str):
             return value  # String is a sequence too. Handle it first
         elif isinstance(value, bytes):
-            return value.decode('utf-8')
+            return value.decode('utf-8', 'backslashreplace')
         elif isinstance(value, float):
             return '{:.6g}'.format(value)
         else:
