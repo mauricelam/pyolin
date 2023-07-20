@@ -12,7 +12,7 @@ import re
 import shutil
 import sys
 import textwrap
-from typing import Callable, Optional, Type, Union
+from typing import Callable, Generator, Optional, Type, Union
 
 
 from .record import Record, Header, HasHeader
@@ -22,10 +22,10 @@ from . import header_detector
 
 __all__ = [
     "AbstractParser",
+    # "AutoParser",
     "AwkParser",
     "CsvParser",
     "JsonParser",
-    "BinaryParser",
     "AutoPrinter",
     "create_parser",
     "PARSERS",
@@ -43,39 +43,38 @@ __all__ = [
 ]
 
 
-def _gen_split(stream, delimiter):
+def _gen_split(stream: io.BytesIO, delimiter: str) -> Generator[bytes, None, None]:
     """
     Read the stream "line by line", where line is defined by the delimiter.
 
     list(_gen_split(stream, delimiter)) is similar to stream.read().split(delimiter)
     """
-    buf = ""
+    buf = bytearray()
     while True:
         chunk = stream.read(1)
         if not chunk:
             if buf:
                 yield buf
             break
-        buf += chunk
+        buf.extend(chunk)
         while True:
-            match = re.search(delimiter, buf)
+            match = re.search(delimiter.encode('utf-8'), buf)
             if not match:
                 break
             yield buf[: match.start()]
-            buf = ""
+            buf = bytearray()
 
 
 class AbstractParser(abc.ABC):
     default_fs = r"[ \t]+"
     default_rs = r"\n"
-    binary = False
 
     def __init__(self, record_separator: str, field_separator: str):
         self.record_separator = record_separator or self.default_rs
         self.field_separator = field_separator or self.default_fs
         self.has_header = None  # Auto detect
 
-    def records(self, stream):
+    def records(self, stream: io.BytesIO):
         result = self.gen_records(stream)
         has_header = self.has_header
         if self.has_header is None:
@@ -95,17 +94,34 @@ class AbstractParser(abc.ABC):
             yield from (Record(*record, recordstr=line) for record, line in result)
 
     @abc.abstractmethod
-    def gen_records(self, stream):
+    def gen_records(self, stream: io.BytesIO):
         """
         Yields records in the format of (tuple, str)
         """
         raise NotImplementedError()
 
 
+# class AutoParser(AbstractParser):
+#     '''
+#     A parser that tries to automatically detect the input data format.
+
+#     Supports JSON, field separated text (awk style), CSV, and TSV.
+#     '''
+
+#     def gen_records(self, stream: io.BytesIO):
+#         gen_split = _gen_split(stream, self.record_separator)
+#         sample = list(itertools.islice(gen_split, 5))
+#         for recordstr in itertools.chain((sample, _gen_split)):
+#             # TODO!
+#             yield None, None
+#             # yield re.split(self.field_separator, recordstr), recordstr
+
+
 class AwkParser(AbstractParser):
-    def gen_records(self, stream):
-        for recordstr in _gen_split(stream, self.record_separator):
-            yield re.split(self.field_separator, recordstr), recordstr
+    def gen_records(self, stream: io.BytesIO):
+        for record_bytes in _gen_split(stream, self.record_separator):
+            record_str = record_bytes.decode('utf-8')
+            yield re.split(self.field_separator, record_str), record_str
 
 
 class CustomSniffer(csv.Sniffer):
@@ -177,44 +193,35 @@ class CsvParser(AbstractParser):
         super().__init__(*args, **kwargs)
         self.dialect = dialect
 
-    def gen_records(self, stream):
-        stream = _gen_split(stream, self.record_separator)
+    def gen_records(self, stream: io.BytesIO):
+        gen_lines = _gen_split(stream, self.record_separator)
         sniffer = None
         if self.dialect is None:
-            preview, stream = peek_iter(stream, 5)
-            sniff_sample = self.record_separator.join(preview)
+            preview, gen_lines = peek_iter(gen_lines, 5)
+            sniff_sample = self.record_separator.join(b.decode('utf-8') for b in preview)
             sniffer = CustomSniffer(self.dialect)
             self.dialect = sniffer.sniff(sniff_sample, delimiters=self.field_separator)
         csv_reader = CsvReader(self.dialect)
-        for line in stream:
-            if sniffer and sniffer.update_dialect(line):
+        for line in gen_lines:
+            line_str = line.decode('utf-8')
+            if sniffer and sniffer.update_dialect(line_str):
                 csv_reader.dialect = sniffer.dialect  # type: ignore
-            fields = csv_reader.read(line)
-            yield fields, line
+            fields = csv_reader.read(line_str)
+            yield fields, line_str
 
 
 class JsonParser(AbstractParser):
-    binary = False
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.has_header = True
 
-    def gen_records(self, stream):
+    def gen_records(self, stream: io.BytesIO):
         records = json.load(stream)
         for i, r in enumerate(records):
             if not i:
                 yield r.keys(), ""
             yield r.values(), json.dumps(r)
-
-
-class BinaryParser:
-    binary = True
-
-    def records(self, stream):
-        raise AttributeError(
-            "Record based attributes are not supported in binary input mode"
-        )
 
 
 PARSERS = {
@@ -224,7 +231,6 @@ PARSERS = {
     "csv_unix": lambda rs, fs: CsvParser(rs, fs, dialect=csv.unix_dialect),
     "tsv": lambda rs, fs: CsvParser(rs, "\t"),
     "json": JsonParser,
-    "binary": lambda rs, fs: BinaryParser(),
 }
 
 
@@ -487,7 +493,10 @@ class StrPrinter(Printer):
 
 class BinaryPrinter(Printer):
     def gen_result(self, result, *, header=None):
-        yield bytes(result)
+        if isinstance(result, str):
+            yield bytes(result, 'utf-8')
+        else:
+            yield bytes(result)
 
     def print_result(self, result, *, header=None):
         try:

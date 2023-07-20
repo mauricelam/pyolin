@@ -88,6 +88,7 @@ class StreamingSequence(Sequence[T]):
         try:
             return next(itertools.islice(iter(self), key, key + 1))
         except StopIteration:
+            #pylint:disable=raise-missing-from
             raise IndexError("list index out of range")
 
     def __reversed__(self) -> Iterable[T]:

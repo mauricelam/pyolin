@@ -18,14 +18,14 @@ def _test_file(file):
     return os.path.join(os.path.dirname(__file__), file)
 
 
-def run_cli(prog, *, input="data_nba.txt", extra_args=(), **kwargs):
+def run_cli(prog, *, input_file="data_nba.txt", extra_args=(), **kwargs):
     with run_capturing_output(errmsg=f"Prog: {prog}") as output:
-        pyolin._command_line(prog, *extra_args, input=_test_file(input), **kwargs)
+        pyolin._command_line(prog, *extra_args, input=_test_file(input_file), **kwargs)
         return output
 
 
-def run_pyolin(prog, *, input="data_nba.txt", **kwargs):
-    return pyolin.run(prog, input=_test_file(input), **kwargs)
+def run_pyolin(prog, *, input_file="data_nba.txt", **kwargs):
+    return pyolin.run(prog, input=_test_file(input_file), **kwargs)
 
 
 @contextlib.contextmanager
@@ -86,19 +86,19 @@ Actual:
         input: str = "data_nba.txt",
         **kwargs,
     ):
-        actual = run_pyolin(prog, input=input, **kwargs)
+        actual = run_pyolin(prog, input_file=input, **kwargs)
         self.assertEqual(actual, expected)
 
     def assertPyolin(
         self,
         prog: str,
-        expected: str,
+        expected: Union[str, bytes],
         *,
         input: str = "data_nba.txt",
         extra_args: Sequence[str] = (),
         **kwargs,
     ):
-        actual = run_cli(prog, input=input, extra_args=extra_args, **kwargs)
+        actual = run_cli(prog, input_file=input, extra_args=extra_args, **kwargs)
         if isinstance(expected, str):
             self._myassert(actual.getvalue(), expected, prog, input)
         else:
@@ -574,6 +574,7 @@ Actual:
         with pyolinPopen(
             "parser.has_header = False; line", extra_args=["--output_format=awk"]
         ) as proc:
+            assert proc.stdin and proc.stdout
             proc.stdin.write("Raptors Toronto    58 24 0.707\n")
             proc.stdin.flush()
             with timeout(2):
@@ -591,6 +592,7 @@ Actual:
         with pyolinPopen(
             "parser.has_header = False; line", extra_args=["--output_format=awk"]
         ) as proc:
+            assert proc.stdin and proc.stdout and proc.stderr
             proc.stdin.write("Raptors Toronto    58 24 0.707\n")
             proc.stdin.flush()
             with timeout(2):
@@ -609,7 +611,7 @@ Actual:
     def testStreamingStdinBinary(self):
         with pyolinPopen(
             "file[:2]",
-            extra_args=["--input_format=binary", "--output_format=binary"],
+            extra_args=["--output_format=binary"],
             universal_newlines=False,
         ) as proc:
             stdout, _ = proc.communicate(b"\x30\x62\x43\x00")  # type: ignore
@@ -619,6 +621,7 @@ Actual:
         with pyolinPopen(
             "parser.has_header = False; records[:2]", extra_args=["--output_format=awk"]
         ) as proc:
+            assert proc.stdin and proc.stdout
             proc.stdin.write("Raptors Toronto    58 24 0.707\n")
             proc.stdin.write("Celtics Boston     49 33 0.598\n")
             proc.stdin.flush()
@@ -634,6 +637,7 @@ Actual:
             "parser.has_header = False; records[1].str",
             extra_args=["--output_format=awk"],
         ) as proc:
+            assert proc.stdin and proc.stdout
             proc.stdin.write("Raptors Toronto    58 24 0.707\n")
             proc.stdin.write("Celtics Boston     49 33 0.598\n")
             proc.stdin.flush()
@@ -1472,6 +1476,7 @@ Actual:
         with pyolinPopen(
             "parser.has_header = False; record", ["--output_format", "csv"]
         ) as proc:
+            assert proc.stdin and proc.stdout
             proc.stdin.write("Raptors Toronto    58 24 0.707\n")
             proc.stdin.flush()
             with timeout(2):
@@ -1837,7 +1842,15 @@ Actual:
             """\
             21
             """,
-            input_format="binary",
+            input="data_pickle",
+        )
+
+    def testBinaryInputCanBeAccessed(self):
+        self.assertPyolin(
+            "type(file).__name__",
+            """\
+            bytes
+            """,
             input="data_pickle",
         )
 
@@ -1847,7 +1860,6 @@ Actual:
             """\
             hello world
             """,
-            input_format="binary",
             input="data_pickle",
         )
 
@@ -1855,14 +1867,14 @@ Actual:
         self.assertPyolin(
             'b"\\x30\\x62\\x43\\x00"',
             b"\x30\x62\x43\x00",
-            input_format="binary",
             output_format="binary",
         )
 
     def testBinaryInputAccessRecords(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_cli("records", input_format="binary", input="data_pickle")
+            run_cli("records", input_file="data_pickle")
         self.assertEqual(
+            "Cannot access records from binary mode",
             "Record based attributes are not supported in binary input mode",
             str(context.exception.__cause__),
         )

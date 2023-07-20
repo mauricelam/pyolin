@@ -5,7 +5,7 @@ import re
 import sys
 
 from contextlib import contextmanager
-from typing import IO, Any, Callable, Generator, Iterable
+from typing import IO, Any, Callable, Generator, Iterable, Union
 from hashbang import command, Argument
 
 from .util import (
@@ -23,13 +23,13 @@ from .parser import Prog
 
 
 @contextmanager
-def get_io(input_file: str, *, binary: bool = False) -> Generator[IO[Any], None, None]:
+def get_io(input_file: str) -> Generator[IO[Any], None, None]:
     if input_file:
-        mode = "rb" if binary else "r"
+        mode = "rb"
         with open(input_file, mode) as f:
             yield f
     else:
-        yield sys.stdin.buffer if binary else sys.stdin
+        yield sys.stdin.buffer
 
 
 class RecordScoped(LazyItem):
@@ -76,15 +76,18 @@ def _execute_internal(
     def gen_records():
         parser_box.frozen = True
         parser = parser_box()
-        with get_io(input, binary=parser.binary) as f:
+        with get_io(input) as f:
             for record in parser.records(f):
                 yield record
 
-    def get_contents(input):
+    def get_contents(input) -> Union[str, bytes]:
         parser_box.frozen = True
-        parser = parser_box()
-        with get_io(input, binary=parser.binary) as f:
-            return f.read()
+        with get_io(input) as f:
+            contents = f.read()
+            try:
+                return contents.decode('utf-8')
+            except:
+                return contents
 
     record_seq = RecordSequence(gen_records())
 
