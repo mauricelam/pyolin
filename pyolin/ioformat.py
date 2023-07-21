@@ -12,17 +12,17 @@ import re
 import shutil
 import sys
 import textwrap
-from typing import Callable, Generator, Optional, Type, Union
+from typing import Any, Callable, Generator, Iterable, Optional, Sequence, Type, Union
 
 
 from .record import Record, Header, HasHeader
-from .util import _UNDEFINED_, clean_close_stdout_and_stderr, peek_iter
+from .util import _UNDEFINED_, clean_close_stdout_and_stderr, debug, peek_iter
 from .field import Field
 from . import header_detector
 
 __all__ = [
     "AbstractParser",
-    # "AutoParser",
+    "AutoParser",
     "AwkParser",
     "CsvParser",
     "JsonParser",
@@ -43,36 +43,53 @@ __all__ = [
 ]
 
 
-def _gen_split(stream: io.BytesIO, delimiter: str) -> Generator[bytes, None, None]:
+class _LimitReached(Exception):
+    """Limit reached without seeing a delimiter"""
+
+    def __init__(self, read_bytes: bytes):
+        self.read_bytes = read_bytes
+
+
+def _gen_split(
+    stream: io.BytesIO, delimiter: str, *, limit: Optional[int] = None
+) -> Generator[bytes, None, None]:
     """
     Read the stream "line by line", where line is defined by the delimiter.
 
     list(_gen_split(stream, delimiter)) is similar to stream.read().split(delimiter)
+
+    `limit` is the number of bytes to read up to. If this limit is reached, this
+    generator will throw an error
     """
     buf = bytearray()
+    binary_delimiter = delimiter.encode("utf-8")
+    yielded = False
+    i = 0
     while True:
         chunk = stream.read(1)
+        i += 1
+        if limit and i > limit and not yielded:
+            # If no lines found when the limit is hit, raise exception
+            raise _LimitReached(bytes(chunk))
         if not chunk:
             if buf:
                 yield buf
             break
         buf.extend(chunk)
         while True:
-            match = re.search(delimiter.encode('utf-8'), buf)
+            match = re.search(binary_delimiter, buf)
             if not match:
                 break
+            yielded = True
             yield buf[: match.start()]
             buf = bytearray()
 
 
 class AbstractParser(abc.ABC):
-    default_fs = r"[ \t]+"
-    default_rs = r"\n"
-
-    def __init__(self, record_separator: str, field_separator: str):
-        self.record_separator = record_separator or self.default_rs
-        self.field_separator = field_separator or self.default_fs
-        self.has_header = None  # Auto detect
+    def __init__(self, record_separator: str, field_separator: str | None):
+        self.has_header: bool | None = None
+        self.record_separator = record_separator
+        self.field_separator = field_separator
 
     def records(self, stream: io.BytesIO):
         result = self.gen_records(stream)
@@ -101,42 +118,93 @@ class AbstractParser(abc.ABC):
         raise NotImplementedError()
 
 
-# class AutoParser(AbstractParser):
-#     '''
-#     A parser that tries to automatically detect the input data format.
+class AutoParser(AbstractParser):
+    """
+    A parser that tries to automatically detect the input data format.
 
-#     Supports JSON, field separated text (awk style), CSV, and TSV.
-#     '''
+    Supports JSON, field separated text (awk style), CSV, and TSV.
+    """
 
-#     def gen_records(self, stream: io.BytesIO):
-#         gen_split = _gen_split(stream, self.record_separator)
-#         sample = list(itertools.islice(gen_split, 5))
-#         for recordstr in itertools.chain((sample, _gen_split)):
-#             # TODO!
-#             yield None, None
-#             # yield re.split(self.field_separator, recordstr), recordstr
+    def __init__(self, record_separator: str, field_separator: str | None):
+        super().__init__(record_separator, field_separator)
+
+    def gen_records(self, stream: io.BytesIO):
+        try:
+            gen_lines = _gen_split(stream, self.record_separator, limit=4000)
+            sample, gen_lines = peek_iter(gen_lines, 5)
+            sniffer = CustomSniffer()
+            sniff_result = None
+            try:
+                sample_str = self.record_separator.join(
+                    b.decode("utf-8") for b in sample
+                )
+                sniff_result = sniffer.sniff(
+                    sample_str, delimiters=self.field_separator
+                )
+            except (csv.Error, UnicodeDecodeError) as exc:
+                debug(exc)
+            if sniff_result and sniff_result.delimiter in (",", "\t"):
+                self.field_separator = self.field_separator or sniff_result.delimiter
+                yield from CsvParser(
+                    record_separator=self.record_separator,
+                    field_separator=self.field_separator,
+                    dialect=sniff_result,
+                ).gen_records_from_lines(gen_lines, sniffer)
+            else:
+                # TODO: This can be JSON too
+                yield from AwkParser(
+                    self.record_separator, self.field_separator
+                ).gen_records_from_lines(gen_lines)
+        except _LimitReached as limit_reached:
+            # Check is JSON
+            read_bytes = limit_reached.read_bytes
+            if read_bytes.startswith(b"{") or read_bytes.startswith(b"["):
+                try:
+                    records = json.loads(read_bytes + stream.read())
+                    self.has_header = True
+                    for i, r in enumerate(records):
+                        if not i:
+                            yield r.keys(), ""
+                        yield r.values(), json.dumps(r)
+                except:
+                    raise RuntimeError("Unable to detect input format") from None
+        except UnicodeDecodeError:
+            raise AttributeError(
+                "`record`-based attributes are not supported for binary inputs"
+            ) from None
 
 
 class AwkParser(AbstractParser):
+    def __init__(self, record_separator: str, field_separator: str | None):
+        super().__init__(record_separator, field_separator or r"[ \t]+")
+
     def gen_records(self, stream: io.BytesIO):
-        for record_bytes in _gen_split(stream, self.record_separator):
-            record_str = record_bytes.decode('utf-8')
+        assert self.field_separator
+        gen_lines = _gen_split(stream, self.record_separator)
+        return self.gen_records_from_lines(gen_lines)
+
+    def gen_records_from_lines(self, gen_lines: Iterable[bytes]):
+        assert self.field_separator
+        for record_bytes in gen_lines:
+            record_str = record_bytes.decode("utf-8")
             yield re.split(self.field_separator, record_str), record_str
 
 
 class CustomSniffer(csv.Sniffer):
-    def __init__(self, force_dialect=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, force_dialect: csv.Dialect | None = None):
+        super().__init__()
         self._force_dialect = force_dialect
         self.dialect: csv.Dialect | Type[csv.Dialect] | None = None
         self.dialect_doublequote_decided = False
 
-    def sniff(self, *args, **kwargs):
+    def sniff(
+        self, sample: str, delimiters: str | None = None
+    ) -> csv.Dialect | type[csv.Dialect]:
         if self._force_dialect is not None:
             return self._force_dialect
         if self.dialect is not None:
             return self.dialect
-        self.dialect = super().sniff(*args, **kwargs)
+        self.dialect = super().sniff(sample, delimiters=delimiters)
         self.dialect.doublequote = True
         return self.dialect
 
@@ -145,6 +213,7 @@ class CustomSniffer(csv.Sniffer):
             return False
         if self.dialect_doublequote_decided:
             return False
+        assert self.dialect
         if re.search(r'[^\\]""', line):
             self.dialect.doublequote = True
             return False
@@ -182,15 +251,13 @@ class CsvReader:
 
 
 class CsvParser(AbstractParser):
-    default_fs = r","
-
     def __init__(
         self,
-        *args,
-        dialect: Union[str, csv.Dialect, Type[csv.Dialect], None] = None,
-        **kwargs,
+        record_separator: str,
+        field_separator: str | None,
+        dialect: csv.Dialect | Type[csv.Dialect] | None = None,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(record_separator, field_separator or ",")
         self.dialect = dialect
 
     def gen_records(self, stream: io.BytesIO):
@@ -198,12 +265,20 @@ class CsvParser(AbstractParser):
         sniffer = None
         if self.dialect is None:
             preview, gen_lines = peek_iter(gen_lines, 5)
-            sniff_sample = self.record_separator.join(b.decode('utf-8') for b in preview)
-            sniffer = CustomSniffer(self.dialect)
+            sniff_sample = self.record_separator.join(
+                b.decode("utf-8") for b in preview
+            )
+            sniffer = CustomSniffer(force_dialect=self.dialect)
             self.dialect = sniffer.sniff(sniff_sample, delimiters=self.field_separator)
+        return self.gen_records_from_lines(gen_lines, sniffer)
+
+    def gen_records_from_lines(
+        self, gen_lines: Iterable[bytes], sniffer: CustomSniffer | None
+    ) -> Generator[tuple[Any, str], None, None]:
+        assert self.dialect
         csv_reader = CsvReader(self.dialect)
         for line in gen_lines:
-            line_str = line.decode('utf-8')
+            line_str = line.decode("utf-8")
             if sniffer and sniffer.update_dialect(line_str):
                 csv_reader.dialect = sniffer.dialect  # type: ignore
             fields = csv_reader.read(line_str)
@@ -211,9 +286,8 @@ class CsvParser(AbstractParser):
 
 
 class JsonParser(AbstractParser):
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, record_separator: str, field_separator: str | None):
+        super().__init__(record_separator, field_separator)
         self.has_header = True
 
     def gen_records(self, stream: io.BytesIO):
@@ -225,6 +299,7 @@ class JsonParser(AbstractParser):
 
 
 PARSERS = {
+    "auto": AutoParser,
     "awk": AwkParser,
     "csv": CsvParser,
     "csv_excel": lambda rs, fs: CsvParser(rs, fs, dialect=csv.excel),
@@ -239,8 +314,8 @@ def create_parser(
 ) -> Callable[[], AbstractParser]:
     try:
         return PARSERS[input_format](record_separator, field_separator)
-    except KeyError as e:
-        raise ValueError(f"Unknown input format {input_format}") from e
+    except KeyError as exc:
+        raise ValueError(f"Unknown input format {input_format}") from exc
 
 
 class Printer(abc.ABC):
@@ -318,6 +393,8 @@ class Printer(abc.ABC):
 
 
 class AutoPrinter(Printer):
+    _printer: Printer
+
     def gen_result(self, result, *, header=None):
         printer_type = "awk"
         if isinstance(result, collections.abc.Iterable):
@@ -383,9 +460,9 @@ class MarkdownRowFormat:
             for w in widths
         ]
 
-    def format(self, cells):
+    def format(self, cells: Sequence[Any]) -> str:
         cell_lines = [
-            wrapper.wrap(cell) if wrapper else [cell]
+            wrapper.wrap(str(cell)) if wrapper else [cell]
             for wrapper, cell in zip_longest(self._wrappers, cells)
         ]
         line_cells = zip_longest(*cell_lines, fillvalue="")
@@ -408,11 +485,11 @@ class MarkdownRowFormat:
 
 
 class MarkdownPrinter(Printer):
-    def _allocate_width(self, header, table):
+    def _allocate_width(self, header: Sequence[str], table):
         if sys.stdout.isatty():
             available_width, _ = shutil.get_terminal_size((100, 24))
         else:
-            available_width = int(os.getenv("PYOLIN_TABLE_WIDTH", 100))
+            available_width = int(os.getenv("PYOLIN_TABLE_WIDTH", "100"))
         # Subtract number of characters used by markdown
         available_width -= 2 + 3 * (len(header) - 1) + 2
         remaining_space = available_width
@@ -442,7 +519,7 @@ class MarkdownPrinter(Printer):
                 break
         return [max(w, 1) for w in widths]
 
-    def format_table(self, table, header):
+    def format_table(self, table, header: Optional[Sequence[str]]):
         table1, table2 = itertools.tee(table)
         widths = self._allocate_width(header, itertools.islice(table2, 10))
         row_format = MarkdownRowFormat(widths)
@@ -494,7 +571,7 @@ class StrPrinter(Printer):
 class BinaryPrinter(Printer):
     def gen_result(self, result, *, header=None):
         if isinstance(result, str):
-            yield bytes(result, 'utf-8')
+            yield bytes(result, "utf-8")
         else:
             yield bytes(result)
 
@@ -525,5 +602,5 @@ PRINTERS = {
 }
 
 
-def new_printer(output_format: str) -> Callable[[], Printer]:
+def new_printer(output_format: str) -> Printer:
     return PRINTERS[output_format]()

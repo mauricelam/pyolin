@@ -5,7 +5,7 @@ import re
 import sys
 
 from contextlib import contextmanager
-from typing import IO, Any, Callable, Generator, Iterable, Union
+from typing import IO, Any, Callable, Generator, Iterable, Optional, Union
 from hashbang import command, Argument
 
 from .util import (
@@ -54,17 +54,17 @@ class RecordScoped(LazyItem):
         try:
             self._val = next(self._iter)
             return self._val
-        except StopIteration as e:
-            raise NoMoreRecords() from e
+        except StopIteration as exc:
+            raise NoMoreRecords() from exc
 
 
 def _execute_internal(
     prog,
     *args,
-    input=None,
+    input_: Optional[str]=None,
     field_separator=None,
     record_separator="\n",
-    input_format="awk",
+    input_format="auto",
     output_format="auto",
 ):
     prog = Prog(prog)
@@ -73,23 +73,23 @@ def _execute_internal(
     )
     parser_box = BoxedItem(lambda: new_parser(input_format))
 
-    def gen_records():
+    def gen_records(input_file: str):
         parser_box.frozen = True
         parser = parser_box()
-        with get_io(input) as f:
+        with get_io(input_file) as f:
             for record in parser.records(f):
                 yield record
 
-    def get_contents(input) -> Union[str, bytes]:
+    def get_contents(input_file: str) -> Union[str, bytes]:
         parser_box.frozen = True
-        with get_io(input) as f:
+        with get_io(input_file) as f:
             contents = f.read()
             try:
                 return contents.decode('utf-8')
-            except:
+            except Exception:
                 return contents
 
-    record_seq = RecordSequence(gen_records())
+    record_seq = RecordSequence(gen_records(input_))
 
     def get_dataframe():
         import pandas as pd
@@ -126,11 +126,11 @@ def _execute_internal(
             # Table scoped
             "lines": table_scoped(lambda: StreamingSequence(r.str for r in record_seq)),
             "records": table_scoped(lambda: record_seq),
-            "file": table_scoped(lambda: get_contents(input)),
-            "contents": table_scoped(lambda: get_contents(input)),
+            "file": table_scoped(lambda: get_contents(input_)),
+            "contents": table_scoped(lambda: get_contents(input_)),
             "df": table_scoped(get_dataframe),
             # Other
-            "filename": input,
+            "filename": input_,
             "_UNDEFINED_": _UNDEFINED_,
             "new_printer": new_printer,
             "new_parser": new_parser,
@@ -155,14 +155,14 @@ def _execute_internal(
         result = prog.exec(global_dict)
     except NoMoreRecords:
         return _UNDEFINED_, global_dict
-    else:
-        if scope == "record":
-            global_dict["BEGIN"] = False
-            result = itertools.chain(
-                (result,), (prog.exec(global_dict) for _ in record_var)
-            )
 
-        return result, global_dict
+    if scope == "record":
+        global_dict["BEGIN"] = False
+        result = itertools.chain(
+            (result,), (prog.exec(global_dict) for _ in record_var)
+        )
+
+    return result, global_dict
 
 
 def run(*args, **kwargs):
@@ -191,10 +191,10 @@ def run(*args, **kwargs):
 def _command_line(
     prog,
     *_REMAINDER_,
-    input=None,
+    input_=None,
     field_separator=None,
     record_separator="\n",
-    input_format="awk",
+    input_format="auto",
     output_format="auto",
 ):
     """
@@ -239,7 +239,7 @@ def _command_line(
     result, global_dict = _execute_internal(
         prog,
         *_REMAINDER_,
-        input=input,
+        input_=input_,
         field_separator=field_separator,
         record_separator=record_separator,
         input_format=input_format,

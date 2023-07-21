@@ -71,8 +71,8 @@ def _replace_with_newline(tokens: List[tokenize.TokenInfo], pos: int) -> None:
 
 def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
     """
-    Parse the given pyolin program into the exec statements and eval statements that can be evaluated
-    directly, applying the necessary syntax transformations as necessary.
+    Parse the given pyolin program into the exec statements and eval statements that can be
+    evaluated directly, applying the necessary syntax transformations as necessary.
     """
     prog_io = io.StringIO(prog)
     tokens = tokenize.generate_tokens(prog_io.readline)
@@ -85,19 +85,19 @@ def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
     debug(f"stmt={prog_stmts} expr={prog_expr}")
     try:
         exec_statements = ast.parse(prog_stmts, mode="exec")
-    except SyntaxError as e:
+    except SyntaxError as exc:
         raise RuntimeError(
             textwrap.dedent(
                 f"""\
-            Invalid syntax:
-              {prog_stmts}
-              {" "*(e.offset-1)}^"""
+                Invalid syntax:
+                  {prog_stmts}
+                  {" "*(exc.offset-1)}^"""
             )
-        )
+        ) from None
     try:
         # Try to parse as generator expression (the common case)
         eval_expr = ast.parse(f"({prog_expr})", mode="eval")
-    except SyntaxError as e:
+    except SyntaxError as exc:
         # Try to parse as <expr> if <condition>
         try:
             eval_expr = ast.parse(f"({prog_expr} else _UNDEFINED_)", mode="eval")
@@ -110,9 +110,9 @@ def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
                         f"""\
                     Invalid syntax:
                       {prog_expr}
-                      {" "*(e.offset-2)}^"""
+                      {" "*(exc.offset-2)}^"""
                     )
-                )
+                ) from None
             else:
                 raise RuntimeError(
                     textwrap.dedent(
@@ -120,7 +120,7 @@ def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
                     Cannot evaluate value from statement:
                       {prog_expr}"""
                     )
-                )
+                ) from None
     debug(ast.dump(eval_expr))
     return exec_statements, eval_expr
 
@@ -130,8 +130,8 @@ class UserError(RuntimeError):
         cause = self.__cause__
         assert isinstance(cause, BaseException)
         return traceback.format_exception(
-            cause.__class__, cause, cause.__traceback__.tb_next
-        )  # pylint: disable=no-member
+            cause.__class__, cause, cause.__traceback__.tb_next  # pylint: disable=no-member
+        )
 
     def __str__(self):
         return "".join(self.formatted_tb()).rstrip("\n")
@@ -151,10 +151,10 @@ class Prog:
             self._exec = compile(exec_code, filename="pyolin_user_prog.py", mode="exec")
             self._eval = compile(eval_code, filename="pyolin_user_prog.py", mode="eval")
 
-    def exec(self, globals: Dict[str, Any]) -> Any:
+    def exec(self, global_dict: Dict[str, Any]) -> Any:
         try:
-            exec(self._exec, globals)
-            return eval(self._eval, globals)
+            exec(self._exec, global_dict)
+            return eval(self._eval, global_dict)
         except NoMoreRecords:
             raise
         except Exception as e:

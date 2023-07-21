@@ -1,6 +1,7 @@
 import contextlib
 import io
 import signal
+from typing import Optional
 
 
 class ErrorWithStderr(Exception):
@@ -51,7 +52,7 @@ class TextIO(io.TextIOWrapper):
 
 
 @contextlib.contextmanager
-def run_capturing_output(*, errmsg=None):
+def run_capturing_output(*, errmsg: Optional[str] = None):
     out = TextIO()
     err = TextIO()
     with contextlib.redirect_stdout(out):
