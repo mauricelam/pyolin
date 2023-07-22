@@ -2186,6 +2186,90 @@ Actual:
             extra_args=["testing", "1", "2", "3"],
         )
 
+    def test_manual_load_json_record(self):
+        for output_format, expected in [
+            (
+                "awk",
+                """\
+                    color red
+                    value #f00
+                    """,
+            ),
+            (
+                "json",
+                """\
+                {
+                    "color": "red",
+                    "value": "#f00"
+                }
+                """
+            )
+        ]:
+            with self.subTest(output_format):
+                self.assertPyolin(
+                    "json.loads(file)[0]",
+                    expected,
+                    input_file="data_colors.json",
+                    output_format=output_format,
+                )
+
+    def test_manual_load_json_output(self):
+        for output_format, expected in [
+            (
+                "awk",
+                """\
+                ('color', 'red') ('value', '#f00')
+                ('color', 'green') ('value', '#0f0')
+                ('color', 'blue') ('value', '#00f')
+                ('color', 'cyan') ('value', '#0ff')
+                ('color', 'magenta') ('value', '#f0f')
+                ('color', 'yellow') ('value', '#ff0')
+                ('color', 'black') ('value', '#000')
+                """,
+            ),
+            (
+                "json",
+                """
+                [
+                    {
+                        "color": "red",
+                        "value": "#f00"
+                    },
+                    {
+                        "color": "green",
+                        "value": "#0f0"
+                    },
+                    {
+                        "color": "blue",
+                        "value": "#00f"
+                    },
+                    {
+                        "color": "cyan",
+                        "value": "#0ff"
+                    },
+                    {
+                        "color": "magenta",
+                        "value": "#f0f"
+                    },
+                    {
+                        "color": "yellow",
+                        "value": "#ff0"
+                    },
+                    {
+                        "color": "black",
+                        "value": "#000"
+                    }
+                ]
+                """,
+            ),
+        ]:
+            with self.subTest(output_format):
+                self.assertPyolin(
+                    "json.loads(file)",
+                    expected,
+                    input_file="data_colors.json",
+                    output_format=output_format,
+                )
+
     # TODOs:
     # Bash / Zsh autocomplete integration
-    # Automatic input type detection

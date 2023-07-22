@@ -363,6 +363,8 @@ class Printer(abc.ABC):
         if isinstance(record, (str, bytes)):
             return [self.format_value(record)]
         elif isinstance(record, collections.abc.Iterable):
+            if isinstance(record, dict):
+                record = record.items()
             return [self.format_value(i) for i in record]
         else:
             return [self.format_value(record)]
@@ -403,6 +405,8 @@ class Printer(abc.ABC):
             header = header or [str(i) for i in result.columns]
             result = (self.format_record(row) for _, row in result.iterrows())
         elif isinstance(result, collections.abc.Iterable):
+            if isinstance(result, dict):
+                result = result.items()
             if not isinstance(result, (str, Record, tuple, bytes)):
                 result = (self.format_record(r) for r in result if r is not _UNDEFINED_)
                 result, result_tee = itertools.tee(result)
