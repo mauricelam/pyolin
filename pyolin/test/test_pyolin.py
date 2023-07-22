@@ -1,16 +1,22 @@
+# pylint: disable=missing-function-docstring
+# pylint: disable=missing-module-docstring
+# pylint: disable=missing-class-docstring
+# pylint: disable=too-many-lines
+
 import contextlib
 import os
 import traceback
 from typing import Any, Callable, Sequence, Union
-from pyolin.parser import UserError
-from pyolin import pyolin
-from pyolin.util import _UNDEFINED_
 from pprint import pformat
 import subprocess
 import sys
 import textwrap
 import unittest
 from unittest import mock
+
+from pyolin.parser import UserError
+from pyolin import pyolin
+from pyolin.util import _UNDEFINED_
 
 from .utils import ErrorWithStderr, run_capturing_output, timeout
 
@@ -84,10 +90,10 @@ Actual:
         prog: Union[str, Callable[[], Any]],
         expected: Any,
         *,
-        input: str = "data_nba.txt",
+        input_file: str = "data_nba.txt",
         **kwargs,
     ):
-        actual = run_pyolin(prog, input_file=input, **kwargs)
+        actual = run_pyolin(prog, input_file=input_file, **kwargs)
         self.assertEqual(actual, expected)
 
     def assertPyolin(
@@ -1014,7 +1020,7 @@ Actual:
     """,
             input_file="data_grades_simple_csv.csv",
             field_separator=r"[\.,]",
-            input_format="awk"
+            input_format="awk",
         )
 
     def testRecordSeparator(self):
@@ -1712,69 +1718,61 @@ Actual:
             input_format="json",
         )
 
-    def testSingleValueOutput(self):
-        self.assertPyolin(
-            "len(records)",
-            """\
-            | value |
-            | ----- |
-            | 7     |
-            """,
-            input_file="data_colors.json",
-            input_format="json",
-            output_format="markdown",
-        )
-
-    def testRecordOutput(self):
-        self.assertPyolin(
-            "records[0]",
-            """\
-            | color | value |
-            | ----- | ----- |
-            | red   | #f00  |
-            """,
-            input_file="data_colors.json",
-            input_format="json",
-            output_format="markdown",
-        )
-
-    def testRecordsWithHeader(self):
-        self.assertPyolin(
-            "records",
-            """\
-            | color   | value |
-            | ------- | ----- |
-            | red     | #f00  |
-            | green   | #0f0  |
-            | blue    | #00f  |
-            | cyan    | #0ff  |
-            | magenta | #f0f  |
-            | yellow  | #ff0  |
-            | black   | #000  |
-            """,
-            input_file="data_colors.json",
-            input_format="json",
-            output_format="markdown",
-        )
-
-    def testLinesWithHeader(self):
-        self.assertPyolin(
-            "lines",
-            """\
-            | value                                 |
-            | ------------------------------------- |
-            | {"color": "red", "value": "#f00"}     |
-            | {"color": "green", "value": "#0f0"}   |
-            | {"color": "blue", "value": "#00f"}    |
-            | {"color": "cyan", "value": "#0ff"}    |
-            | {"color": "magenta", "value": "#f0f"} |
-            | {"color": "yellow", "value": "#ff0"}  |
-            | {"color": "black", "value": "#000"}   |
-            """,
-            input_file="data_colors.json",
-            input_format="json",
-            output_format="markdown",
-        )
+    def test_markdown_output_format(self):
+        for prog, expected in [
+            (
+                "len(records)",
+                """\
+                | value |
+                | ----- |
+                | 7     |
+                """,
+            ),
+            (
+                "records[0]",
+                """\
+                | color | value |
+                | ----- | ----- |
+                | red   | #f00  |
+                """,
+            ),
+            (
+                "records",
+                """\
+                | color   | value |
+                | ------- | ----- |
+                | red     | #f00  |
+                | green   | #0f0  |
+                | blue    | #00f  |
+                | cyan    | #0ff  |
+                | magenta | #f0f  |
+                | yellow  | #ff0  |
+                | black   | #000  |
+                """,
+            ),
+            (
+                "lines",
+                """\
+                | value                                 |
+                | ------------------------------------- |
+                | {"color": "red", "value": "#f00"}     |
+                | {"color": "green", "value": "#0f0"}   |
+                | {"color": "blue", "value": "#00f"}    |
+                | {"color": "cyan", "value": "#0ff"}    |
+                | {"color": "magenta", "value": "#f0f"} |
+                | {"color": "yellow", "value": "#ff0"}  |
+                | {"color": "black", "value": "#000"}   |
+                """,
+            ),
+        ]:
+            with self.subTest(prog):
+                self.assertPyolin(
+                    prog,
+                    expected,
+                    input_file="data_colors.json",
+                    input_format="json",
+                    output_format="markdown",
+                )
 
     def testMarkdownNonUniformColumnCount(self):
         self.assertPyolin(
@@ -1829,9 +1827,13 @@ Actual:
     def testStrPrinterTable(self):
         self.assertPyolin(
             "records",
-            """\
-            [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
-            """,
+            (
+                "[('Bucks', 'Milwaukee', '60', '22', '0.732'), "
+                "('Raptors', 'Toronto', '58', '24', '0.707'), "
+                "('76ers', 'Philadelphia', '51', '31', '0.622'), "
+                "('Celtics', 'Boston', '49', '33', '0.598'), "
+                "('Pacers', 'Indiana', '48', '34', '0.585')]\n"
+            ),
             output_format="str",
         )
 
@@ -1895,19 +1897,67 @@ Actual:
             output_format="binary",
         )
 
-    def testAutoParserUnixCsv(self):
-        self.assertPyolin(
-            "records[0]",
-            "John Doe 120 jefferson st. Riverside  NJ  08075\n",
-            input_file="data_addresses_unix.csv",
-        )
-
-    def testAutoParserUnixCsvWithHeader(self):
-        self.assertPyolin(
-            "records[0]",
-            "John Doe 120 jefferson st. Riverside  NJ  08075\n",
-            input_file="data_addresses_with_header.csv",
-        )
+    def test_auto_parser(self):
+        for input_file, expected_output in [
+            ("data_nba.txt", ("Bucks", "Milwaukee", "60", "22", "0.732")),
+            ("data_files.txt", ("dir", "True", "30", "40.0")),
+            ("data_colors.json", ("red", "#f00")),
+            (
+                "data_addresses_with_header.csv",
+                ("John", "Doe", "120 jefferson st.", "Riverside", " NJ", " 08075"),
+            ),
+            (
+                "data_addresses_unix.csv",
+                ("John", "Doe", "120 jefferson st.", "Riverside", " NJ", " 08075"),
+            ),
+            (
+                "data_grades_with_header.csv",
+                (
+                    "Alfalfa",
+                    "Aloysius",
+                    "123-45-6789",
+                    "40.0",
+                    "90.0",
+                    "100.0",
+                    "83.0",
+                    "49.0",
+                    "D-",
+                ),
+            ),
+            (
+                "data_amazon_reviews.tsv",
+                (
+                    "US",
+                    "3653882",
+                    "R3O9SGZBVQBV76",
+                    "B00FALQ1ZC",
+                    "937001370",
+                    (
+                        'Invicta Women\'s 15150 "Angel" 18k Yellow Gold Ion-Plated Stainless Steel '
+                        "and Brown Leather Watch"
+                    ),
+                    "Watches",
+                    "5",
+                    "0",
+                    "0",
+                    "N",
+                    "Y",
+                    "Five Stars",
+                    (
+                        "Absolutely love this watch! Get compliments almost every time I wear it. "
+                        "Dainty."
+                    ),
+                    "2015-08-31",
+                ),
+            ),
+        ]:
+            with self.subTest(input_file):
+                self.assertPyolin(
+                    "records[0]",
+                    repr(expected_output) + "\n",
+                    input_file=input_file,
+                    output_format="repr",
+                )
 
     def testBinaryInputAccessRecords(self):
         with self.assertRaises(ErrorWithStderr) as context:

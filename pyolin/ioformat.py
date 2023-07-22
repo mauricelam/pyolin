@@ -86,7 +86,7 @@ def _gen_split(
 
 
 class AbstractParser(abc.ABC):
-    def __init__(self, record_separator: str, field_separator: str | None):
+    def __init__(self, record_separator: str, field_separator: Optional[str]):
         self.has_header: bool | None = None
         self.record_separator = record_separator
         self.field_separator = field_separator
@@ -120,54 +120,44 @@ class AbstractParser(abc.ABC):
 
 class AutoParser(AbstractParser):
     """
-    A parser that tries to automatically detect the input data format.
+    A parser that automatically detects the input data format.
 
     Supports JSON, field separated text (awk style), CSV, and TSV.
     """
 
-    def __init__(self, record_separator: str, field_separator: str | None):
-        super().__init__(record_separator, field_separator)
-
-    def gen_records(self, stream: io.BytesIO):
+    def gen_records(self, stream: io.BytesIO) -> Generator[tuple[Any, str], None, None]:
+        # Note: This method returns a generator, instead of yielding by itself so that the parsing
+        # logic can run eagerly and set `self.has_header` before it is used.
         try:
             gen_lines = _gen_split(stream, self.record_separator, limit=4000)
             sample, gen_lines = peek_iter(gen_lines, 5)
-            sniffer = CustomSniffer()
-            sniff_result = None
-            try:
-                sample_str = self.record_separator.join(
-                    b.decode("utf-8") for b in sample
-                )
-                sniff_result = sniffer.sniff(
-                    sample_str, delimiters=self.field_separator
-                )
-            except (csv.Error, UnicodeDecodeError) as exc:
-                debug(exc)
-            if sniff_result and sniff_result.delimiter in (",", "\t"):
-                self.field_separator = self.field_separator or sniff_result.delimiter
-                yield from CsvParser(
-                    record_separator=self.record_separator,
-                    field_separator=self.field_separator,
-                    dialect=sniff_result,
-                ).gen_records_from_lines(gen_lines, sniffer)
+            csv_parser = CsvParser(self.record_separator, self.field_separator)
+            csv_sniffer = csv_parser.sniff_heuristic(sample)
+            if csv_sniffer:
+                # Update field_separator to the detected delimiter
+                self.field_separator = csv_parser.dialect.delimiter
+                return csv_parser.gen_records_from_lines(gen_lines, csv_sniffer)
             else:
-                # TODO: This can be JSON too
-                yield from AwkParser(
+                json_parser = JsonParser(self.record_separator, self.field_separator)
+                gen_lines, gen_lines_for_json = itertools.tee(gen_lines)
+                sample, gen_lines_for_json = peek_iter(gen_lines_for_json, 1)
+                first_char: bytes = next(iter(sample), b'')[:1]
+                if first_char in (b'{', b'['):
+                    try:
+                        json_object = json.loads(
+                            self.record_separator.encode("utf-8").join(gen_lines_for_json)
+                        )
+                        self.has_header = True
+                        return json_parser.gen_records_from_json(json_object)
+                    except json.JSONDecodeError:
+                        pass
+                return AwkParser(
                     self.record_separator, self.field_separator
                 ).gen_records_from_lines(gen_lines)
-        except _LimitReached as limit_reached:
-            # Check is JSON
-            read_bytes = limit_reached.read_bytes
-            if read_bytes.startswith(b"{") or read_bytes.startswith(b"["):
-                try:
-                    records = json.loads(read_bytes + stream.read())
-                    self.has_header = True
-                    for i, r in enumerate(records):
-                        if not i:
-                            yield r.keys(), ""
-                        yield r.values(), json.dumps(r)
-                except:
-                    raise RuntimeError("Unable to detect input format") from None
+        except _LimitReached:
+            raise RuntimeError(
+                "Unable to detect input format. Try specifying the input type with --input_format"
+            ) from None
         except UnicodeDecodeError:
             raise AttributeError(
                 "`record`-based attributes are not supported for binary inputs"
@@ -175,7 +165,12 @@ class AutoParser(AbstractParser):
 
 
 class AwkParser(AbstractParser):
-    def __init__(self, record_separator: str, field_separator: str | None):
+    def __init__(
+        self,
+        record_separator: str,
+        # For AwkParser, the field separator is a regex string.
+        field_separator: Optional[str],
+    ):
         super().__init__(record_separator, field_separator or r"[ \t]+")
 
     def gen_records(self, stream: io.BytesIO):
@@ -185,21 +180,26 @@ class AwkParser(AbstractParser):
 
     def gen_records_from_lines(self, gen_lines: Iterable[bytes]):
         assert self.field_separator
-        for record_bytes in gen_lines:
-            record_str = record_bytes.decode("utf-8")
-            yield re.split(self.field_separator, record_str), record_str
+        try:
+            for record_bytes in gen_lines:
+                record_str = record_bytes.decode("utf-8")
+                yield re.split(self.field_separator, record_str), record_str
+        except UnicodeDecodeError:
+            raise AttributeError(
+                "`record`-based attributes are not supported for binary inputs"
+            ) from None
 
 
 class CustomSniffer(csv.Sniffer):
-    def __init__(self, force_dialect: csv.Dialect | None = None):
+    def __init__(self):
         super().__init__()
-        self._force_dialect = force_dialect
-        self.dialect: csv.Dialect | Type[csv.Dialect] | None = None
+        self._force_dialect: Optional[csv.Dialect] = None
+        self.dialect: Union[csv.Dialect, Type[csv.Dialect], None] = None
         self.dialect_doublequote_decided = False
 
     def sniff(
-        self, sample: str, delimiters: str | None = None
-    ) -> csv.Dialect | type[csv.Dialect]:
+        self, sample: str, delimiters: Optional[str] = None
+    ) -> Union[csv.Dialect, type[csv.Dialect]]:
         if self._force_dialect is not None:
             return self._force_dialect
         if self.dialect is not None:
@@ -251,29 +251,52 @@ class CsvReader:
 
 
 class CsvParser(AbstractParser):
+    COMMON_DELIMITERS = ",\t;"
+
     def __init__(
         self,
         record_separator: str,
-        field_separator: str | None,
-        dialect: csv.Dialect | Type[csv.Dialect] | None = None,
+        # For CsvParser, field_separator is a str where each character is a possible delimiter.
+        field_separator: Optional[str],
+        dialect: Union[csv.Dialect, Type[csv.Dialect], None] = None,
     ):
-        super().__init__(record_separator, field_separator or ",")
+        super().__init__(record_separator, field_separator or self.COMMON_DELIMITERS)
         self.dialect = dialect
+
+    def sniff_heuristic(self, sample: Iterable[bytes]) -> Optional[CustomSniffer]:
+        """Sniffs the given sample, and returns a sniffer if the input looks
+        like a CSV, or returns None otherwise.
+
+        Compared to `_sniff`, this tries harder to guess whether the input is a
+        CSV or not, whereas `_sniff` assumes the input is CSV and tries to guess
+        the type."""
+        assert not self.dialect
+        try:
+            sniffer = self._sniff(sample)
+            if self.dialect and self.dialect.delimiter in self.field_separator:
+                return sniffer
+        except (csv.Error, UnicodeDecodeError) as exc:
+            debug(exc)
+        return None
+
+    def _sniff(self, sample: Iterable[bytes]) -> Optional[CustomSniffer]:
+        """Sniffs the given sample, and returns a sniffer of the best guess if
+        the sniffer can determine."""
+        sniffer = CustomSniffer()
+        sample_str = self.record_separator.join(b.decode("utf-8") for b in sample)
+        self.dialect = sniffer.sniff(sample_str, delimiters=self.field_separator)
+        return sniffer
 
     def gen_records(self, stream: io.BytesIO):
         gen_lines = _gen_split(stream, self.record_separator)
         sniffer = None
         if self.dialect is None:
             preview, gen_lines = peek_iter(gen_lines, 5)
-            sniff_sample = self.record_separator.join(
-                b.decode("utf-8") for b in preview
-            )
-            sniffer = CustomSniffer(force_dialect=self.dialect)
-            self.dialect = sniffer.sniff(sniff_sample, delimiters=self.field_separator)
+            sniffer = self._sniff(preview)
         return self.gen_records_from_lines(gen_lines, sniffer)
 
     def gen_records_from_lines(
-        self, gen_lines: Iterable[bytes], sniffer: CustomSniffer | None
+        self, gen_lines: Iterable[bytes], sniffer: Optional[CustomSniffer]
     ) -> Generator[tuple[Any, str], None, None]:
         assert self.dialect
         csv_reader = CsvReader(self.dialect)
@@ -286,16 +309,19 @@ class CsvParser(AbstractParser):
 
 
 class JsonParser(AbstractParser):
-    def __init__(self, record_separator: str, field_separator: str | None):
+    def __init__(self, record_separator: str, field_separator: Optional[str]):
         super().__init__(record_separator, field_separator)
         self.has_header = True
 
-    def gen_records(self, stream: io.BytesIO):
-        records = json.load(stream)
-        for i, r in enumerate(records):
+    def gen_records_from_json(self, json_object: Any):
+        for i, record in enumerate(json_object):
             if not i:
-                yield r.keys(), ""
-            yield r.values(), json.dumps(r)
+                yield record.keys(), ""
+            yield record.values(), json.dumps(record)
+
+    def gen_records(self, stream: io.BytesIO):
+        json_object = json.load(stream)
+        return self.gen_records_from_json(json_object)
 
 
 PARSERS = {

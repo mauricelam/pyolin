@@ -23,7 +23,7 @@ from .parser import Prog
 
 
 @contextmanager
-def get_io(input_file: str) -> Generator[IO[Any], None, None]:
+def get_io(input_file: Optional[str]) -> Generator[IO[Any], None, None]:
     if input_file:
         mode = "rb"
         with open(input_file, mode) as f:
@@ -33,6 +33,8 @@ def get_io(input_file: str) -> Generator[IO[Any], None, None]:
 
 
 class RecordScoped(LazyItem):
+    _on_accessed: Callable[[], None]
+
     def __init__(self, generator: RecordSequence, *, on_accessed: Callable[[], None]):
         super().__init__(self._get_first_time, on_accessed=on_accessed)
         self._iter = iter(generator)
@@ -73,14 +75,14 @@ def _execute_internal(
     )
     parser_box = BoxedItem(lambda: new_parser(input_format))
 
-    def gen_records(input_file: str):
+    def gen_records(input_file: Optional[str]):
         parser_box.frozen = True
         parser = parser_box()
         with get_io(input_file) as f:
             for record in parser.records(f):
                 yield record
 
-    def get_contents(input_file: str) -> Union[str, bytes]:
+    def get_contents(input_file: Optional[str]) -> Union[str, bytes]:
         parser_box.frozen = True
         with get_io(input_file) as f:
             contents = f.read()
