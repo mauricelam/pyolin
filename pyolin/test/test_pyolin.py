@@ -2362,5 +2362,56 @@ Actual:
             input_file="data_json_example.json",
         )
 
+    def test_3d_table(self):
+        self.assert_pyolin(
+            "[['foo', ['a', 'b']], ['bar', ['c', 'd']]]",
+            """\
+            [
+                [
+                    "foo",
+                    "['a', 'b']"
+                ],
+                [
+                    "bar",
+                    "['c', 'd']"
+                ]
+            ]
+            """,
+            input_file="data_json_example.json",
+        )
+
+    def test_multiline_json_prog(self):
+        self.assert_pyolin(
+            """\
+            [
+                ['foo', ['a', 'b']], ['bar', ['c', 'd']]
+            ]""",
+            """\
+            [
+                [
+                    "foo",
+                    "['a', 'b']"
+                ],
+                [
+                    "bar",
+                    "['c', 'd']"
+                ]
+            ]
+            """,
+            input_file="data_json_example.json",
+        )
+
+    def test_json_with_undefined(self):
+        self.assert_pyolin(
+            "[_UNDEFINED_, 'foo']",
+            """\
+            [
+                "foo"
+            ]
+            """,
+            input_file="data_json_example.json",
+            output_format="json"
+        )
+
     # TODOs:
     # Bash / Zsh autocomplete integration

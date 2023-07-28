@@ -27,7 +27,15 @@ from typing import (
 
 from .json_encoder import CustomJsonEncoder
 from .record import Record, Header, HasHeader
-from .util import _UNDEFINED_, clean_close_stdout_and_stderr, debug, is_list_like, peek_iter
+from .util import (
+    _UNDEFINED_,
+    clean_close_stdout_and_stderr,
+    debug,
+    is_list_like,
+    peek_iter,
+    peek_one_iter,
+    tee_if_iterable,
+)
 from .field import Field
 from . import header_detector
 
@@ -329,7 +337,7 @@ class JsonParser(AbstractParser):
     def gen_records_from_json(self, json_object: Any):
         for i, record in enumerate(json_object):
             if not isinstance(record, dict):
-                raise TypeError('Input is not an array of objects')
+                raise TypeError("Input is not an array of objects")
             if not i:
                 yield record.keys(), ""
             yield record.values(), json.dumps(record)
@@ -454,18 +462,31 @@ class _SynthesizedHeader(list[I]):
 class AutoPrinter(Printer):
     _printer: Printer
 
-    def gen_result(self, result, *, header=None) -> Generator[str, None, None]:
+    def _infer_suitable_printer(self, result: Any) -> str:
         if isinstance(result, dict):
-            self._printer = new_printer("json")
-            yield from self._printer.gen_result(result, header=header)
-            return
-        if isinstance(result, collections.abc.Iterable):
-            if not isinstance(result, (str, Record, tuple, bytes)):
-                # TODO: If this is more complex than 2D (i.e. individual items are iterable), then it should use JSON
-                self._printer = new_printer("markdown")
-                yield from self._printer.gen_result(result, header=header)
-                return
-        self._printer = new_printer("awk")
+            return "json"
+        if "pandas" in sys.modules:
+            import pandas as pd
+
+            if isinstance(result, pd.DataFrame):
+                return "markdown"
+        if isinstance(result, collections.abc.Iterable) and not isinstance(
+            result, (str, Record, tuple, bytes)
+        ):
+            first_row = next(iter(result), None)
+            if isinstance(first_row, collections.abc.Sequence):
+                if all(not is_list_like(cell) for cell in first_row):
+                    return "markdown"
+                else:
+                    return "json"
+            else:
+                return "markdown"
+        return "awk"
+
+    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        tee_result, result = tee_if_iterable(result)
+        printer_str = self._infer_suitable_printer(tee_result)
+        self._printer = new_printer(printer_str)
         yield from self._printer.gen_result(result, header=header)
 
 

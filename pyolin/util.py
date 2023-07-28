@@ -215,9 +215,23 @@ class LazyItem(Item[I]):
 
 
 def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:
+    if isinstance(iterator, collections.abc.Sequence):
+        return iterator[:num], iterator
     iterator = iter(iterator)  # Ensure this is an iterator
     preview = tuple(itertools.islice(iterator, 0, num))
     return preview, itertools.chain(preview, iterator)
+
+def peek_one_iter(iterator: Iterable[T], default: T) -> Tuple[T, Iterable[T]]:
+    peek, iterator = peek_iter(iterator, 1)
+    return next(iter(peek), default), iterator
+
+def tee_if_iterable(obj: Any) -> tuple[Any, Any]:
+    if isinstance(obj, collections.abc.Iterable):
+        if not isinstance(obj, (collections.abc.Sequence, dict)):
+            pd = sys.modules.get('pandas', None)
+            if not (pd and isinstance(obj, pd.DataFrame)):
+                return itertools.tee(obj)
+    return obj, obj
 
 def is_list_like(obj: Any) -> bool:
     if not isinstance(obj, collections.abc.Iterable):
