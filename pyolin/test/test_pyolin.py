@@ -2124,9 +2124,9 @@ Actual:
             str(context.exception.__cause__.__cause__),
         )
 
-    def test_begin(self):
+    def test_record_first(self):
         self.assert_pyolin(
-            'if BEGIN: mysum = 0; header = ("sum", "value")\n'
+            'if record.first: mysum = 0; header = ("sum", "value")\n'
             "mysum += record[2]\n"
             "mysum, record[2]",
             """\
@@ -2137,6 +2137,20 @@ Actual:
             | 169 | 51    |
             | 218 | 49    |
             | 266 | 48    |
+            """,
+        )
+
+    def test_record_num(self):
+        self.assert_pyolin(
+            'record.num',
+            """\
+            | value |
+            | ----- |
+            | 0     |
+            | 1     |
+            | 2     |
+            | 3     |
+            | 4     |
             """,
         )
 
@@ -2189,12 +2203,12 @@ Actual:
             """,
         )
 
-    def test_if_begin_double_semi_colon(self):
+    def test_if_record_first_double_semi_colon(self):
         """
         Double semi-colon is treated as a newline
         """
         self.assert_pyolin(
-            "if BEGIN: sum = 0;; sum += record[2]; sum, record[2]",
+            "if record.first: sum = 0;; sum += record[2]; sum, record[2]",
             """\
             | 0   | 1  |
             | --- | -- |
@@ -2382,10 +2396,10 @@ Actual:
 
     def test_multiline_json_prog(self):
         self.assert_pyolin(
-            """\
+            textwrap.dedent("""\
             [
                 ['foo', ['a', 'b']], ['bar', ['c', 'd']]
-            ]""",
+            ]"""),
             """\
             [
                 [

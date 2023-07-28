@@ -26,6 +26,16 @@ class Record(tuple):
 
     def __init__(self, *args, recordstr="", header: Optional['Header']=None):
         self.str = recordstr
+        self.num: int = -1
+
+    def set_num(self, num: int):
+        """The index number of the record in the sequence."""
+        self.num = num
+
+    @property
+    def first(self) -> bool:
+        """Whether this is the first record in the sequence."""
+        return self.num == 0
 
 
 class Header(Record):

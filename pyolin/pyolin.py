@@ -6,7 +6,17 @@ import sys
 import json
 
 from contextlib import contextmanager
-from typing import IO, Any, Callable, Generator, Generic, Iterable, Optional, TypeVar, Union
+from typing import (
+    IO,
+    Any,
+    Callable,
+    Generator,
+    Generic,
+    Iterable,
+    Optional,
+    TypeVar,
+    Union,
+)
 from hashbang import command, Argument
 
 from .util import (
@@ -32,7 +42,10 @@ def get_io(input_file: Optional[str]) -> Generator[IO[Any], None, None]:
     else:
         yield sys.stdin.buffer
 
-I = TypeVar('I')
+
+I = TypeVar("I")
+
+
 class RecordScoped(LazyItem, Generic[I]):
     _on_accessed: Callable[[], None]
 
@@ -64,31 +77,33 @@ class RecordScoped(LazyItem, Generic[I]):
 def _execute_internal(
     prog,
     *args,
-    input_: Optional[str]=None,
+    input_: Optional[str] = None,
     field_separator=None,
     record_separator="\n",
     input_format="auto",
     output_format="auto",
 ):
     prog = Prog(prog)
-    new_parser = lambda input_format: create_parser(
-        input_format, record_separator, field_separator
-    )
+
+    def new_parser(input_format):
+        return create_parser(input_format, record_separator, field_separator)
+
     parser_box = BoxedItem(lambda: new_parser(input_format))
 
     def gen_records(input_file: Optional[str]):
         parser_box.frozen = True
         parser = parser_box()
-        with get_io(input_file) as f:
-            for record in parser.records(f):
+        with get_io(input_file) as io_stream:
+            for i, record in enumerate(parser.records(io_stream)):
+                record.set_num(i)
                 yield record
 
     def get_contents(input_file: Optional[str]) -> Union[str, bytes]:
         parser_box.frozen = True
-        with get_io(input_file) as f:
-            contents = f.read()
+        with get_io(input_file) as io_stream:
+            contents = io_stream.read()
             try:
-                return contents.decode('utf-8')
+                return contents.decode("utf-8")
             except Exception:
                 return contents
 
@@ -138,7 +153,6 @@ def _execute_internal(
             "_UNDEFINED_": _UNDEFINED_,
             "new_printer": new_printer,
             "new_parser": new_parser,
-            "BEGIN": True,
             # Modules
             "re": re,
             "pd": Item(lambda: importlib.import_module("pandas")),
@@ -161,7 +175,6 @@ def _execute_internal(
         return _UNDEFINED_, global_dict
 
     if scope == "record":
-        global_dict["BEGIN"] = False
         result = itertools.chain(
             (result,), (prog.exec(global_dict) for _ in record_var)
         )
