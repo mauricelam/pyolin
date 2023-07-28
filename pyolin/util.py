@@ -88,7 +88,17 @@ class StreamingSequence(Sequence[T]):
         if self._list:
             return self._list.__getitem__(key)
         if isinstance(key, slice):
+            if (
+                (key.start is not None and key.start < 0)
+                or (key.stop is not None and key.stop < 0)
+                or (key.step is not None and key.step < 0)
+            ):
+                # Iterators can't do negative indexing. Materialize to a list
+                return self.list[key]
             return itertools.islice(iter(self), key.start, key.stop, key.step)
+        if key < 0:
+            # Iterators can't do negative indexing. Materialize to a list
+            return self.list[key]
         try:
             return next(itertools.islice(iter(self), key, key + 1))
         except StopIteration:
@@ -221,17 +231,20 @@ def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]
     preview = tuple(itertools.islice(iterator, 0, num))
     return preview, itertools.chain(preview, iterator)
 
+
 def peek_one_iter(iterator: Iterable[T], default: T) -> Tuple[T, Iterable[T]]:
     peek, iterator = peek_iter(iterator, 1)
     return next(iter(peek), default), iterator
 
+
 def tee_if_iterable(obj: Any) -> tuple[Any, Any]:
     if isinstance(obj, collections.abc.Iterable):
         if not isinstance(obj, (collections.abc.Sequence, dict)):
-            pd = sys.modules.get('pandas', None)
+            pd = sys.modules.get("pandas", None)
             if not (pd and isinstance(obj, pd.DataFrame)):
                 return itertools.tee(obj)
     return obj, obj
+
 
 def is_list_like(obj: Any) -> bool:
     if not isinstance(obj, collections.abc.Iterable):
@@ -239,6 +252,7 @@ def is_list_like(obj: Any) -> bool:
     if isinstance(obj, (str, bytes, dict)):
         return False
     return True
+
 
 # https://bugs.python.org/issue11380#msg248579
 def clean_close_stdout_and_stderr() -> None:

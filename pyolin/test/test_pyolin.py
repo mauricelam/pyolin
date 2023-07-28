@@ -2427,5 +2427,48 @@ Actual:
             output_format="json"
         )
 
+    def test_records_negative_index(self):
+        self.assert_pyolin(
+            "records[-1]",
+            """\
+            Pacers Indiana 48 34 0.585
+            """,
+        )
+
+    def test_records_negative_slice_start(self):
+        self.assert_pyolin(
+            "records[-1:]",
+            """\
+            | 0      | 1       | 2  | 3  | 4     |
+            | ------ | ------- | -- | -- | ----- |
+            | Pacers | Indiana | 48 | 34 | 0.585 |
+            """,
+        )
+
+    def test_records_negative_slice_stop(self):
+        self.assert_pyolin(
+            "records[:-3]",
+            """\
+            | 0       | 1         | 2  | 3  | 4     |
+            | ------- | --------- | -- | -- | ----- |
+            | Bucks   | Milwaukee | 60 | 22 | 0.732 |
+            | Raptors | Toronto   | 58 | 24 | 0.707 |
+            """,
+        )
+
+    def test_records_negative_slice_step(self):
+        self.assert_pyolin(
+            "records[::-1]",
+            """\
+            | 0       | 1            | 2  | 3  | 4     |
+            | ------- | ------------ | -- | -- | ----- |
+            | Pacers  | Indiana      | 48 | 34 | 0.585 |
+            | Celtics | Boston       | 49 | 33 | 0.598 |
+            | 76ers   | Philadelphia | 51 | 31 | 0.622 |
+            | Raptors | Toronto      | 58 | 24 | 0.707 |
+            | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
+            """,
+        )
+
     # TODOs:
     # Bash / Zsh autocomplete integration
