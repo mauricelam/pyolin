@@ -12,11 +12,22 @@ import re
 import shutil
 import sys
 import textwrap
-from typing import Any, Callable, Generator, Iterable, Optional, Sequence, Type, Union
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Optional,
+    Sequence,
+    Type,
+    TypeVar,
+    Union,
+)
 
 
+from .json_encoder import CustomJsonEncoder
 from .record import Record, Header, HasHeader
-from .util import _UNDEFINED_, clean_close_stdout_and_stderr, debug, peek_iter
+from .util import _UNDEFINED_, clean_close_stdout_and_stderr, debug, is_list_like, peek_iter
 from .field import Field
 from . import header_detector
 
@@ -141,11 +152,13 @@ class AutoParser(AbstractParser):
                 json_parser = JsonParser(self.record_separator, self.field_separator)
                 gen_lines, gen_lines_for_json = itertools.tee(gen_lines)
                 sample, gen_lines_for_json = peek_iter(gen_lines_for_json, 1)
-                first_char: bytes = next(iter(sample), b'')[:1]
-                if first_char in (b'{', b'['):
+                first_char: bytes = next(iter(sample), b"")[:1]
+                if first_char in (b"{", b"["):
                     try:
                         json_object = json.loads(
-                            self.record_separator.encode("utf-8").join(gen_lines_for_json)
+                            self.record_separator.encode("utf-8").join(
+                                gen_lines_for_json
+                            )
                         )
                         self.has_header = True
                         return json_parser.gen_records_from_json(json_object)
@@ -315,6 +328,8 @@ class JsonParser(AbstractParser):
 
     def gen_records_from_json(self, json_object: Any):
         for i, record in enumerate(json_object):
+            if not isinstance(record, dict):
+                raise TypeError('Input is not an array of objects')
             if not i:
                 yield record.keys(), ""
             yield record.values(), json.dumps(record)
@@ -345,17 +360,16 @@ def create_parser(
 
 
 class Printer(abc.ABC):
-    @abc.abstractmethod
-    def format_table(self, table, header):
-        raise NotImplementedError()
+    """A printer that defines how to turn the result of the pyolin program into output to stdout."""
 
     def format_value(self, value):
+        """Formats a "single value", as opposed to compound values like lists or iterables."""
         if isinstance(value, str):
             return value  # String is a sequence too. Handle it first
         elif isinstance(value, bytes):
             return value.decode("utf-8", "backslashreplace")
         elif isinstance(value, float):
-            return "{:.6g}".format(value)
+            return f"{value:.6g}"
         else:
             return str(value)
 
@@ -369,19 +383,22 @@ class Printer(abc.ABC):
         else:
             return [self.format_value(record)]
 
-    def _generate_header(self, first_column):
+    def _generate_header(self, first_column) -> Sequence[str]:
         header = []
-        for i, c in enumerate(first_column):
-            h = None
-            if isinstance(c, Field):
-                h = c.header
-            if not h:
+        has_real_header = False
+        for i, column in enumerate(first_column):
+            header_item = None
+            if isinstance(column, Field):
+                if column.header:
+                    header_item = column.header
+                    has_real_header = True
+            if not header_item:
                 if len(first_column) == 1:
-                    h = "value"
+                    header_item = "value"
                 else:
-                    h = str(i)
-            header.append(h)
-        return header
+                    header_item = str(i)
+            header.append(header_item)
+        return header if has_real_header else _SynthesizedHeader(header)
 
     def print_result(self, result, *, header=None):
         try:
@@ -391,9 +408,9 @@ class Printer(abc.ABC):
             clean_close_stdout_and_stderr()
             sys.exit(141)
 
-    def gen_result(self, result, *, header=None):
-        if result is _UNDEFINED_:
-            return
+    def to_table(
+        self, result: Any, *, header: Optional[Sequence[str]] = None
+    ) -> tuple[Sequence[str], Iterable[Any]]:
         header = header or HasHeader.get(result)
         if "pandas" in sys.modules:
             # Re-import it only if it is already imported before. If not the result can't be a
@@ -402,39 +419,54 @@ class Printer(abc.ABC):
         else:
             pd = None
         if pd and isinstance(result, pd.DataFrame):
-            header = header or [str(i) for i in result.columns]
+            header = header or _SynthesizedHeader([str(i) for i in result.columns])
             result = (self.format_record(row) for _, row in result.iterrows())
+            return (header, result)
         elif isinstance(result, collections.abc.Iterable):
             if isinstance(result, dict):
                 result = result.items()
-            if not isinstance(result, (str, Record, tuple, bytes)):
-                result = (self.format_record(r) for r in result if r is not _UNDEFINED_)
-                result, result_tee = itertools.tee(result)
-                first_column = list(next(result_tee, []))
-                header = header or self._generate_header(first_column)
-            else:
+            if isinstance(result, (str, Record, tuple, bytes)):
                 result = (self.format_record(result),)
                 header = header or self._generate_header(result[0])
+                return (header, result)
+            result = (self.format_record(r) for r in result if r is not _UNDEFINED_)
+            result, result_tee = itertools.tee(result)
+            first_column = list(next(result_tee, []))
+            header = header or self._generate_header(first_column)
+            return (header, result)
         else:
-            header = header or ["value"]
+            header = header or _SynthesizedHeader(["value"])
             result = (self.format_record(result),)
+            return (header, result)
 
-        yield from self.format_table(result, header)
+    @abc.abstractmethod
+    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        raise NotImplementedError()
+
+
+I = TypeVar("I")
+
+
+class _SynthesizedHeader(list[I]):
+    """A header that is synthesized (e.g. numbered 0, 1, 2), not from actual imput data"""
 
 
 class AutoPrinter(Printer):
     _printer: Printer
 
-    def gen_result(self, result, *, header=None):
-        printer_type = "awk"
+    def gen_result(self, result, *, header=None) -> Generator[str, None, None]:
+        if isinstance(result, dict):
+            self._printer = new_printer("json")
+            yield from self._printer.gen_result(result, header=header)
+            return
         if isinstance(result, collections.abc.Iterable):
             if not isinstance(result, (str, Record, tuple, bytes)):
-                printer_type = "markdown"
-        self._printer = new_printer(printer_type)
-        yield from super().gen_result(result, header=header)
-
-    def format_table(self, table, header):
-        return self._printer.format_table(table, header)
+                # TODO: If this is more complex than 2D (i.e. individual items are iterable), then it should use JSON
+                self._printer = new_printer("markdown")
+                yield from self._printer.gen_result(result, header=header)
+                return
+        self._printer = new_printer("awk")
+        yield from self._printer.gen_result(result, header=header)
 
 
 class AwkPrinter(Printer):
@@ -442,7 +474,12 @@ class AwkPrinter(Printer):
         self.record_separator = "\n"
         self.field_separator = " "
 
-    def format_table(self, table, header):
+    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        if result is _UNDEFINED_:
+            return
+        header, table = self.to_table(result, header=header)
+        if not isinstance(header, _SynthesizedHeader):
+            yield self.field_separator.join(header) + self.record_separator
         for record in table:
             yield self.field_separator.join(record) + self.record_separator
 
@@ -452,19 +489,23 @@ class CsvPrinter(Printer):
         self.print_header = print_header
         self.delimiter = delimiter
         self.dialect = dialect
+        self.writer = None
 
-    def format_table(self, table, header):
+    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        if result is _UNDEFINED_:
+            return
+        header, table_result = self.to_table(result, header=header)
         output = io.StringIO()
         try:
             self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
-        except csv.Error as e:
-            if "unknown dialect" in str(e):
-                raise RuntimeError(f'Unknown dialect "{self.dialect}"') from e
-            raise RuntimeError(e) from e
+        except csv.Error as exc:
+            if "unknown dialect" in str(exc):
+                raise RuntimeError(f'Unknown dialect "{self.dialect}"') from exc
+            raise RuntimeError(exc) from exc
         if self.print_header:
             self.writer.writerow(header)
             yield self._pop_value(output)
-        for record in table:
+        for record in table_result:
             self.writer.writerow(record)
             yield self._pop_value(output)
 
@@ -475,7 +516,7 @@ class CsvPrinter(Printer):
         return value
 
 
-class MarkdownRowFormat:
+class _MarkdownRowFormat:
     def __init__(self, widths):
         self._width_formats = ["{:%d}" % w for w in widths]
         self._row_template = "| " + " | ".join(self._width_formats) + " |"
@@ -531,9 +572,9 @@ class MarkdownPrinter(Printer):
         widths = [0] * len(header)
         while lens:
             to_del = []
-            for i, l in lens.items():
-                if l < remaining_space / len(lens):
-                    widths[i] = l
+            for i, length in lens.items():
+                if length < remaining_space / len(lens):
+                    widths[i] = length
                     to_del.append(i)
             for i in to_del:
                 del lens[i]
@@ -549,10 +590,13 @@ class MarkdownPrinter(Printer):
                 break
         return [max(w, 1) for w in widths]
 
-    def format_table(self, table, header: Optional[Sequence[str]]):
-        table1, table2 = itertools.tee(table)
+    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        if result is _UNDEFINED_:
+            return
+        header, table_result = self.to_table(result, header=header)
+        table1, table2 = itertools.tee(table_result)
         widths = self._allocate_width(header, itertools.islice(table2, 10))
-        row_format = MarkdownRowFormat(widths)
+        row_format = _MarkdownRowFormat(widths)
         if not header:
             return
         yield row_format.format(header)
@@ -562,30 +606,50 @@ class MarkdownPrinter(Printer):
 
 
 class JsonPrinter(Printer):
-    def format_table(self, table, header):
-        def maybe_to_numeric(val):
-            try:
-                return int(val)
-            except ValueError:
-                try:
-                    return float(val)
-                except ValueError:
-                    return val
+    """Prints the results out in JSON format.
 
-        yield "[\n"
-        for i, record in enumerate(table):
-            if i:
-                yield ",\n"
-            yield json.dumps({h: maybe_to_numeric(f) for h, f in zip(header, record)})
-        yield "\n]\n"
+    If the result is table-like:
+        if input has header row: prints it out as array of objects.
+        else: prints it out in a 2D-array.
+    else:
+        Regular json.dumps()"""
+
+    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        if result is _UNDEFINED_:
+            return
+        if is_list_like(result):
+            (peek_row,), result = peek_iter(result, 1)
+            if is_list_like(peek_row):
+                if not is_list_like(next(iter(peek_row), None)):
+                    header, table = self.to_table(result, header=header)
+                    if isinstance(header, _SynthesizedHeader):
+                        yield from CustomJsonEncoder(indent=4).iterencode(table)
+                        yield "\n"
+                        return
+                    else:
+                        yield "[\n"
+                        for i, record in enumerate(table):
+                            if i:
+                                yield ",\n"
+                            yield "    "
+                            yield from CustomJsonEncoder().iterencode(
+                                dict(zip(header, record))
+                            )
+                        yield "\n]\n"
+                        return
+            if header:
+                yield from CustomJsonEncoder(indent=4).iterencode(
+                    dict(zip(header, result))
+                )
+                yield "\n"
+                return
+        yield from CustomJsonEncoder(indent=4).iterencode(result)
+        yield "\n"
 
 
 class ReprPrinter(Printer):
     def gen_result(self, result, *, header=None):
         yield repr(result) + "\n"
-
-    def format_table(self, table, header):
-        raise NotImplementedError()
 
 
 class StrPrinter(Printer):
@@ -593,9 +657,6 @@ class StrPrinter(Printer):
         result = str(result)
         if result:
             yield result + "\n"
-
-    def format_table(self, table, header):
-        raise NotImplementedError()
 
 
 class BinaryPrinter(Printer):
@@ -612,9 +673,6 @@ class BinaryPrinter(Printer):
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
             sys.exit(141)
-
-    def format_table(self, table, header):
-        raise NotImplementedError()
 
 
 PRINTERS = {

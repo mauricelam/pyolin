@@ -1,4 +1,5 @@
 import abc
+import collections.abc
 import functools
 import itertools
 import os
@@ -45,6 +46,9 @@ class Undefined:
     def __bool__(self):
         return False
 
+    def __bytes__(self):
+        return b""
+
 
 _UNDEFINED_ = Undefined()
 
@@ -88,7 +92,7 @@ class StreamingSequence(Sequence[T]):
         try:
             return next(itertools.islice(iter(self), key, key + 1))
         except StopIteration:
-            #pylint:disable=raise-missing-from
+            # pylint:disable=raise-missing-from
             raise IndexError("list index out of range")
 
     def __reversed__(self) -> Iterable[T]:
@@ -145,6 +149,9 @@ I = TypeVar("I")
 
 
 class Item(Generic[I]):
+    """An Item that is defined by a function, which will be initialized when this item is used,
+    typically from ItemDict."""
+
     def __init__(self, func: Callable[..., I]):
         self.func = func
 
@@ -153,12 +160,17 @@ class Item(Generic[I]):
 
 
 class SettableItem(Item[I], metaclass=abc.ABCMeta):
+    """A settable item for use inside an ItemDict."""
+
     @abc.abstractmethod
     def set(self, value: I) -> None:
+        """Method to be called when the value of this item is set"""
         raise NotImplementedError()
 
 
 class BoxedItem(SettableItem[I]):
+    """A SettableItem that just stores its value in a field, and can be frozen."""
+
     def __init__(self, func: Callable[..., I]):
         super().__init__(func)
         self.value = None
@@ -202,10 +214,17 @@ class LazyItem(Item[I]):
         return self._val
 
 
-def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Iterable[T], Iterable[T]]:
+def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:
+    iterator = iter(iterator)  # Ensure this is an iterator
     preview = tuple(itertools.islice(iterator, 0, num))
     return preview, itertools.chain(preview, iterator)
 
+def is_list_like(obj: Any) -> bool:
+    if not isinstance(obj, collections.abc.Iterable):
+        return False
+    if isinstance(obj, (str, bytes, dict)):
+        return False
+    return True
 
 # https://bugs.python.org/issue11380#msg248579
 def clean_close_stdout_and_stderr() -> None:

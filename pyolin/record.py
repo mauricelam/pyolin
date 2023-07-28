@@ -1,7 +1,7 @@
 import abc
 import itertools
 from itertools import zip_longest
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Sequence, TypeVar
 
 from .field import Field
 from .util import StreamingSequence, cached_property
@@ -9,22 +9,22 @@ from .util import StreamingSequence, cached_property
 
 class HasHeader:
     @staticmethod
-    def get(o):
+    def get(o: 'HasHeader') -> Sequence[str]:
         if isinstance(o, HasHeader):
             return o.header
 
     @abc.abstractproperty
-    def header(self) -> Iterable[str]:
+    def header(self) -> Sequence[str]:
         raise NotImplementedError()
 
 
 class Record(tuple):
-    def __new__(cls, *args, recordstr="", header=None):
+    def __new__(cls, *args, recordstr="", header: Optional['Header']=None):
         return super().__new__(
             cls, tuple(Field(f, header=h) for f, h in zip_longest(args, header or ()))
         )
 
-    def __init__(self, *args, recordstr="", header=None):
+    def __init__(self, *args, recordstr="", header: Optional['Header']=None):
         self.str = recordstr
 
 
@@ -32,7 +32,8 @@ class Header(Record):
     pass
 
 
-class RecordSequence(StreamingSequence, HasHeader):
+T = TypeVar('T')
+class RecordSequence(StreamingSequence[T], HasHeader):
     def __init__(self, records_iter: Iterable[Record]):
         seq1, self._seq_for_header = itertools.tee(records_iter)
         super().__init__(r for r in seq1 if not isinstance(r, Header))

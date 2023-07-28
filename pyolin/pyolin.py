@@ -3,9 +3,10 @@ import importlib
 import itertools
 import re
 import sys
+import json
 
 from contextlib import contextmanager
-from typing import IO, Any, Callable, Generator, Iterable, Optional, Union
+from typing import IO, Any, Callable, Generator, Generic, Iterable, Optional, TypeVar, Union
 from hashbang import command, Argument
 
 from .util import (
@@ -31,8 +32,8 @@ def get_io(input_file: Optional[str]) -> Generator[IO[Any], None, None]:
     else:
         yield sys.stdin.buffer
 
-
-class RecordScoped(LazyItem):
+I = TypeVar('I')
+class RecordScoped(LazyItem, Generic[I]):
     _on_accessed: Callable[[], None]
 
     def __init__(self, generator: RecordSequence, *, on_accessed: Callable[[], None]):
@@ -131,6 +132,7 @@ def _execute_internal(
             "file": table_scoped(lambda: get_contents(input_)),
             "contents": table_scoped(lambda: get_contents(input_)),
             "df": table_scoped(get_dataframe),
+            "jsonobj": table_scoped(lambda: json.loads(get_contents(input_))),
             # Other
             "filename": input_,
             "_UNDEFINED_": _UNDEFINED_,

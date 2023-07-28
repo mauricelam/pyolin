@@ -562,7 +562,7 @@ Actual:
             """,
         )
 
-    def testContents(self):
+    def test_contents(self):
         self.assert_pyolin(
             "len(contents)",
             """\
@@ -783,6 +783,18 @@ Actual:
             | dir/subdir | True  | 12   | 42.0  |
             """,
             input_file="data_files_with_header.txt",
+        )
+
+    def test_awk_output_with_header(self):
+        self.assert_pyolin(
+            "record if record[1].bool",
+            """\
+            Path IsDir Size Score
+            dir True 30 40.0
+            dir/subdir True 12 42.0
+            """,
+            input_file="data_files_with_header.txt",
+            output_format="awk",
         )
 
     def test_filename(self):
@@ -1446,7 +1458,7 @@ Actual:
             output_format="csv",
         )
 
-    def testCsvOutputQuoting(self):
+    def test_csv_output_quoting(self):
         self.assert_pyolin(
             "records",
             '''\
@@ -1678,16 +1690,50 @@ Actual:
 
     def test_json_output(self):
         self.assert_pyolin(
+            "records[0]",
+            """\
+            [
+                "Bucks",
+                "Milwaukee",
+                60,
+                22,
+                0.732
+            ]
+            """,
+            output_format="json",
+        )
+
+    def test_json_output_with_manual_header(self):
+        self.assert_pyolin(
+            "header = ['team', 'city', 'wins', 'loss', 'Win rate']; records[0]",
+            """\
+            {
+                "team": "Bucks",
+                "city": "Milwaukee",
+                "wins": 60,
+                "loss": 22,
+                "Win rate": 0.732
+            }
+            """,
+            output_format="json",
+        )
+
+    def test_json_output_with_header(self):
+        self.assert_pyolin(
             "records",
             """\
             [
-            {"0": "Bucks", "1": "Milwaukee", "2": 60, "3": 22, "4": 0.732},
-            {"0": "Raptors", "1": "Toronto", "2": 58, "3": 24, "4": 0.707},
-            {"0": "76ers", "1": "Philadelphia", "2": 51, "3": 31, "4": 0.622},
-            {"0": "Celtics", "1": "Boston", "2": 49, "3": 33, "4": 0.598},
-            {"0": "Pacers", "1": "Indiana", "2": 48, "3": 34, "4": 0.585}
+                {"Path": "dir", "IsDir": "True", "Size": 30, "Score": 40.0},
+                {"Path": "dir/file.txt", "IsDir": "False", "Size": 40, "Score": 32.0},
+                {"Path": "dir/file1.txt", "IsDir": "False", "Size": 23, "Score": 56.0},
+                {"Path": "dir/file2.mp4", "IsDir": "False", "Size": 15, "Score": 85.0},
+                {"Path": "dir/filea.png", "IsDir": "False", "Size": 31, "Score": 31.0},
+                {"Path": "dir/fileb.txt", "IsDir": "False", "Size": 44, "Score": 16.0},
+                {"Path": "dir/subdir", "IsDir": "True", "Size": 12, "Score": 42.0},
+                {"Path": "dir/subdir/subfile.txt", "IsDir": "False", "Size": 11, "Score": 53.0}
             ]
             """,
+            input_file="data_files_with_header.txt",
             output_format="json",
         )
 
@@ -1964,10 +2010,17 @@ Actual:
     def test_binary_input_access_records(self):
         with self.assertRaises(ErrorWithStderr) as context:
             run_cli("records", input_file="data_pickle")
+
+        def format_exception_only(exc):
+            if sys.version_info >= (3, 10):
+                return traceback.format_exception_only(exc)
+            else:
+                return traceback.format_exception_only(type(exc), exc)
+
         self.assertEqual(
             "`record`-based attributes are not supported for binary inputs",
             str(context.exception.__cause__),
-            msg="".join(traceback.format_exception(context.exception.__cause__)),
+            msg="".join(format_exception_only(context.exception.__cause__)),
         )
 
     def test_set_field_separator(self):
@@ -2046,22 +2099,22 @@ Actual:
     def test_gen_records_if_undefined(self):
         self.assert_run_pyolin("records if False", _UNDEFINED_)
 
-    def test_undefined_repr(self):
-        self.assert_pyolin(
-            "_UNDEFINED_",
-            """\
-            Undefined()
-            """,
-            output_format="repr",
-        )
-
-    def test_undefined_str(self):
-        self.assert_pyolin(
-            "_UNDEFINED_",
-            """\
-            """,
-            output_format="str",
-        )
+    def test_undefined(self):
+        for output_format, expected in {
+            "repr": "Undefined()\n",
+            "str": "",
+            "json": "",
+            "awk": "",
+            "auto": "",
+            "binary": "",
+            "csv": "",
+        }.items():
+            with self.subTest(output_format):
+                self.assert_pyolin(
+                    "_UNDEFINED_",
+                    expected,
+                    output_format=output_format,
+                )
 
     def test_name_error(self):
         with self.assertRaises(ErrorWithStderr) as context:
@@ -2189,24 +2242,18 @@ Actual:
         )
 
     def test_manual_load_json_record(self):
-        for output_format, expected in [
-            (
-                "awk",
-                """\
-                    color red
-                    value #f00
+        for output_format, expected in {
+            "awk": """\
+                   color red
+                   value #f00
+                   """,
+            "json": """\
+                    {
+                        "color": "red",
+                        "value": "#f00"
+                    }
                     """,
-            ),
-            (
-                "json",
-                """\
-                {
-                    "color": "red",
-                    "value": "#f00"
-                }
-                """
-            )
-        ]:
+        }.items():
             with self.subTest(output_format):
                 self.assert_pyolin(
                     "json.loads(file)[0]",
@@ -2216,55 +2263,49 @@ Actual:
                 )
 
     def test_manual_load_json_output(self):
-        for output_format, expected in [
-            (
-                "awk",
-                """\
-                ('color', 'red') ('value', '#f00')
-                ('color', 'green') ('value', '#0f0')
-                ('color', 'blue') ('value', '#00f')
-                ('color', 'cyan') ('value', '#0ff')
-                ('color', 'magenta') ('value', '#f0f')
-                ('color', 'yellow') ('value', '#ff0')
-                ('color', 'black') ('value', '#000')
-                """,
-            ),
-            (
-                "json",
-                """
-                [
-                    {
-                        "color": "red",
-                        "value": "#f00"
-                    },
-                    {
-                        "color": "green",
-                        "value": "#0f0"
-                    },
-                    {
-                        "color": "blue",
-                        "value": "#00f"
-                    },
-                    {
-                        "color": "cyan",
-                        "value": "#0ff"
-                    },
-                    {
-                        "color": "magenta",
-                        "value": "#f0f"
-                    },
-                    {
-                        "color": "yellow",
-                        "value": "#ff0"
-                    },
-                    {
-                        "color": "black",
-                        "value": "#000"
-                    }
-                ]
-                """,
-            ),
-        ]:
+        for output_format, expected in {
+            "awk": """\
+                    ('color', 'red') ('value', '#f00')
+                    ('color', 'green') ('value', '#0f0')
+                    ('color', 'blue') ('value', '#00f')
+                    ('color', 'cyan') ('value', '#0ff')
+                    ('color', 'magenta') ('value', '#f0f')
+                    ('color', 'yellow') ('value', '#ff0')
+                    ('color', 'black') ('value', '#000')
+                    """,
+            "json": """\
+                    [
+                        {
+                            "color": "red",
+                            "value": "#f00"
+                        },
+                        {
+                            "color": "green",
+                            "value": "#0f0"
+                        },
+                        {
+                            "color": "blue",
+                            "value": "#00f"
+                        },
+                        {
+                            "color": "cyan",
+                            "value": "#0ff"
+                        },
+                        {
+                            "color": "magenta",
+                            "value": "#f0f"
+                        },
+                        {
+                            "color": "yellow",
+                            "value": "#ff0"
+                        },
+                        {
+                            "color": "black",
+                            "value": "#000"
+                        }
+                    ]
+                    """,
+        }.items():
             with self.subTest(output_format):
                 self.assert_pyolin(
                     "json.loads(file)",
@@ -2272,6 +2313,54 @@ Actual:
                     input_file="data_colors.json",
                     output_format=output_format,
                 )
+
+    def test_manual_load_csv(self):
+        self.assert_pyolin(
+            "csv.reader(io.StringIO(file))",
+            # pylint:disable=line-too-long
+            """\
+            | 0                     | 1        | 2                                | 3           | 4   | 5      |
+            | --------------------- | -------- | -------------------------------- | ----------- | --- | ------ |
+            | John                  | Doe      | 120 jefferson st.                | Riverside   |  NJ |  08075 |
+            | Jack                  | McGinnis | 220 hobo Av.                     | Phila       |  PA | 09119  |
+            | John "Da Man"         | Repici   | 120 Jefferson St.                | Riverside   |  NJ | 08075  |
+            | Stephen               | Tyler    | 7452 Terrace "At the Plaza" road | SomeTown    | SD  |  91234 |
+            |                       | Blankman |                                  | SomeTown    |  SD |  00298 |
+            | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              | Desert City | CO  | 00123  |
+            """,
+            # pylint:enable=line-too-long
+            input_file="data_addresses.csv",
+        )
+
+    def test_non_table_json(self):
+        with self.assertRaises(ErrorWithStderr) as context:
+            run_cli("records", input_file="data_json_example.json")
+            self.assertEqual(
+                "TypeError: Input is not an array of objects",
+                str(context.exception.__cause__),
+            )
+
+    def test_jsonobj_string_output(self):
+        self.assert_pyolin(
+            "jsonobj['glossary']['title']",
+            "example glossary\n",
+            input_file="data_json_example.json",
+        )
+
+    def test_jsonobj_obj_output(self):
+        self.assert_pyolin(
+            "jsonobj['glossary']['GlossDiv']['GlossList']['GlossEntry']['GlossDef']",
+            """\
+            {
+                "para": "A meta-markup language, used to create markup languages such as DocBook.",
+                "GlossSeeAlso": [
+                    "GML",
+                    "XML"
+                ]
+            }
+            """,
+            input_file="data_json_example.json",
+        )
 
     # TODOs:
     # Bash / Zsh autocomplete integration

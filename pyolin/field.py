@@ -216,6 +216,9 @@ class Field(str):
     def __bytes__(self):
         return self.encode("utf-8")
 
+    def __hash__(self):
+        return hash(str(self))
+
     @property
     def bool(self) -> bool:
         if self.lower() in ("true", "t", "y", "yes", "1", "on"):
