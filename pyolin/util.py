@@ -237,7 +237,7 @@ def peek_one_iter(iterator: Iterable[T], default: T) -> Tuple[T, Iterable[T]]:
     return next(iter(peek), default), iterator
 
 
-def tee_if_iterable(obj: Any) -> tuple[Any, Any]:
+def tee_if_iterable(obj: Any) -> Tuple[Any, Any]:
     if isinstance(obj, collections.abc.Iterable):
         if not isinstance(obj, (collections.abc.Sequence, dict)):
             pd = sys.modules.get("pandas", None)

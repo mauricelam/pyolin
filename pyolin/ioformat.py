@@ -17,8 +17,10 @@ from typing import (
     Callable,
     Generator,
     Iterable,
+    List,
     Optional,
     Sequence,
+    Tuple,
     Type,
     TypeVar,
     Union,
@@ -143,7 +145,7 @@ class AutoParser(AbstractParser):
     Supports JSON, field separated text (awk style), CSV, and TSV.
     """
 
-    def gen_records(self, stream: io.BytesIO) -> Generator[tuple[Any, str], None, None]:
+    def gen_records(self, stream: io.BytesIO) -> Generator[Tuple[Any, str], None, None]:
         # Note: This method returns a generator, instead of yielding by itself so that the parsing
         # logic can run eagerly and set `self.has_header` before it is used.
         try:
@@ -219,7 +221,7 @@ class CustomSniffer(csv.Sniffer):
 
     def sniff(
         self, sample: str, delimiters: Optional[str] = None
-    ) -> Union[csv.Dialect, type[csv.Dialect]]:
+    ) -> Union[csv.Dialect, Type[csv.Dialect]]:
         if self._force_dialect is not None:
             return self._force_dialect
         if self.dialect is not None:
@@ -317,7 +319,7 @@ class CsvParser(AbstractParser):
 
     def gen_records_from_lines(
         self, gen_lines: Iterable[bytes], sniffer: Optional[CustomSniffer]
-    ) -> Generator[tuple[Any, str], None, None]:
+    ) -> Generator[Tuple[Any, str], None, None]:
         assert self.dialect
         csv_reader = CsvReader(self.dialect)
         for line in gen_lines:
@@ -417,7 +419,7 @@ class Printer(abc.ABC):
 
     def to_table(
         self, result: Any, *, header: Optional[Sequence[str]] = None
-    ) -> tuple[Sequence[str], Iterable[Any]]:
+    ) -> Tuple[Sequence[str], Iterable[Any]]:
         header = header or HasHeader.get(result)
         if "pandas" in sys.modules:
             # Re-import it only if it is already imported before. If not the result can't be a
@@ -454,7 +456,7 @@ class Printer(abc.ABC):
 I = TypeVar("I")
 
 
-class _SynthesizedHeader(list[I]):
+class _SynthesizedHeader(List[I]):
     """A header that is synthesized (e.g. numbered 0, 1, 2), not from actual imput data"""
 
 
