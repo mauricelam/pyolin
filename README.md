@@ -139,7 +139,7 @@ Treats the input file as binary. The input file will be read in binary mode. `re
 
 ### `auto`
 
-Automatically detect the suitable output format for best human-readability depending on the result data type. If the result datatype is a list, this will be printed in a markdown table. Otherwise, this will be printed in the "Awk" format.
+Automatically detect the suitable output format for best human-readability depending on the result data type. If the result datatype is table-like, this will be printed in a markdown table. Otherwise, if result is a complex dict or list, it will be printed in JSON. Otherwise, this will be printed in the "Awk" format.
 
 ### `awk`
 alias: `unix`

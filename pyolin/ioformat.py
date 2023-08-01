@@ -33,7 +33,6 @@ from .util import (
     debug,
     is_list_like,
     peek_iter,
-    peek_one_iter,
     tee_if_iterable,
 )
 from .field import Field

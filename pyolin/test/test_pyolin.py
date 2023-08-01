@@ -2013,9 +2013,9 @@ Actual:
 
         def format_exception_only(exc):
             if sys.version_info >= (3, 10):
-                return traceback.format_exception_only(exc)
+                return traceback.format_exception_only(exc)  # type: ignore
             else:
-                return traceback.format_exception_only(type(exc), exc)
+                return traceback.format_exception_only(type(exc), exc)  # type: ignore
 
         self.assertEqual(
             "`record`-based attributes are not supported for binary inputs",
