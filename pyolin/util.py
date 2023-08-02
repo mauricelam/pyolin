@@ -1,3 +1,5 @@
+"""Utility functions."""
+
 import abc
 import collections.abc
 import functools
@@ -21,22 +23,22 @@ from typing import (
 
 
 def cache(func):
+    """Caches the return value for a given function."""
     return functools.lru_cache(maxsize=None)(func)
-
-
-def cached_property(func):
-    return property(cache(func))
 
 
 def debug(*args: Any) -> None:
     """
-    Print a debug statement. These are printed to the console if the $DEBUG env var is set
+    Print a debug statement. These are printed to the console if the $DEBUG env
+    var is set
     """
     if os.getenv("DEBUG"):
         print(*args, file=sys.stderr)
 
 
 class Undefined:
+    """Marks an undefined value, typically filtered out when processing the
+    records."""
     def __str__(self):
         return ""
 
@@ -54,7 +56,7 @@ _UNDEFINED_ = Undefined()
 
 
 class NoMoreRecords(StopIteration):
-    pass
+    """Iteration through the records has completed."""
 
 
 T = TypeVar("T")
@@ -73,6 +75,8 @@ class StreamingSequence(Sequence[T]):
 
     @property
     def list(self) -> List[T]:
+        """Materializes in this streaming sequence as a list and returns the
+        result."""
         if not self._list:
             self._list = list(iter(self))
         return self._list
@@ -152,7 +156,7 @@ class ItemDict(dict):
         try:
             return importlib.import_module(key)
         except ModuleNotFoundError:
-            raise KeyError(key)
+            raise KeyError(key) from None
 
 
 I = TypeVar("I")
@@ -192,7 +196,8 @@ class BoxedItem(SettableItem[I]):
             raise RuntimeError("Cannot set parser after it has been used")
         self.value = value
 
-    def __call__(self) -> I:
+    def __call__(self, *args, **kwargs) -> I:
+        assert not args and not kwargs
         if self.value is not None:
             return self.value
         self.value = super().__call__()
@@ -225,6 +230,12 @@ class LazyItem(Item[I]):
 
 
 def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:
+    """Peeks `num` number of items from the iterator, returning that and the
+    given iterable as a pair. Technically the returned iterable is not the
+    original one, but any value we peeked is prepended to it so it should be
+    functionally equivalent to the given one.
+
+    The input `iterator` should not be used after passing into this function."""
     if isinstance(iterator, collections.abc.Sequence):
         return iterator[:num], iterator
     iterator = iter(iterator)  # Ensure this is an iterator
@@ -232,21 +243,21 @@ def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]
     return preview, itertools.chain(preview, iterator)
 
 
-def peek_one_iter(iterator: Iterable[T], default: T) -> Tuple[T, Iterable[T]]:
-    peek, iterator = peek_iter(iterator, 1)
-    return next(iter(peek), default), iterator
-
-
 def tee_if_iterable(obj: Any) -> Tuple[Any, Any]:
+    """Tee the iterable if it is an iterable that cannot be used multiple times.
+    For all other values, including sequences which are iterables but can be
+    iterated on multiple times, the original value is returned."""
     if isinstance(obj, collections.abc.Iterable):
         if not isinstance(obj, (collections.abc.Sequence, dict)):
-            pd = sys.modules.get("pandas", None)
-            if not (pd and isinstance(obj, pd.DataFrame)):
+            pandas = sys.modules.get("pandas", None)
+            if not (pandas and isinstance(obj, pandas.DataFrame)):
                 return itertools.tee(obj)
     return obj, obj
 
 
 def is_list_like(obj: Any) -> bool:
+    """Whether the given value is list like, including any iterables but
+    excluding dicts, strs, and bytes."""
     if not isinstance(obj, collections.abc.Iterable):
         return False
     if isinstance(obj, (str, bytes, dict)):
@@ -254,8 +265,11 @@ def is_list_like(obj: Any) -> bool:
     return True
 
 
-# https://bugs.python.org/issue11380#msg248579
 def clean_close_stdout_and_stderr() -> None:
+    """Flushes and cleans stdout even if an exception is thrown or interrupted
+    in the middle of the cleanup.
+
+    https://bugs.python.org/issue11380#msg248579"""
     try:
         sys.stdout.flush()
     finally:

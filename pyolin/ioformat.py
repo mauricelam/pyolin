@@ -1,3 +1,5 @@
+"""Module containing parsers and printers for IO formatting."""
+
 import abc
 import collections
 import collections.abc
@@ -106,12 +108,22 @@ def _gen_split(
 
 
 class AbstractParser(abc.ABC):
+    """An abstract parser to be extended by concrete parser implementations.
+
+    Implementations should implement `gen_records()`, which will be called
+    when a record is requested from the parser."""
+
     def __init__(self, record_separator: str, field_separator: Optional[str]):
-        self.has_header: bool | None = None
+        self.has_header: Union[bool, None] = None
         self.record_separator = record_separator
         self.field_separator = field_separator
 
-    def records(self, stream: io.BytesIO):
+    def records(self, stream: io.BytesIO) -> Generator[Record, None, None]:
+        """A generator for records by a parser.
+
+        It delegates to `gen_records` for most of the work, but will process it
+        with `header_detector` to see if the generated records has a header or
+        not."""
         result = self.gen_records(stream)
         has_header = self.has_header
         if self.has_header is None:
@@ -145,7 +157,9 @@ class AutoParser(AbstractParser):
     Supports JSON, field separated text (awk style), CSV, and TSV.
     """
 
-    def gen_records(self, stream: io.BytesIO) -> Generator[Tuple[Any, str], None, None]:
+    def gen_records(
+        self, stream: io.BytesIO
+    ) -> Generator[Tuple[Iterable[str], str], None, None]:
         # Note: This method returns a generator, instead of yielding by itself so that the parsing
         # logic can run eagerly and set `self.has_header` before it is used.
         try:
@@ -155,6 +169,7 @@ class AutoParser(AbstractParser):
             csv_sniffer = csv_parser.sniff_heuristic(sample)
             if csv_sniffer:
                 # Update field_separator to the detected delimiter
+                assert csv_parser.dialect
                 self.field_separator = csv_parser.dialect.delimiter
                 return csv_parser.gen_records_from_lines(gen_lines, csv_sniffer)
             else:
@@ -187,6 +202,11 @@ class AutoParser(AbstractParser):
 
 
 class AwkParser(AbstractParser):
+    """A parser in the AWK style, which can be thought of as whitespace
+    separated values. It splits the records by the `record_separator`, which is
+    the newline charater by default, and splits the record into fields using the
+    `field_separator`, which is a regex pattern that defaults to `[ \\t]+`."""
+
     def __init__(
         self,
         record_separator: str,
@@ -195,12 +215,17 @@ class AwkParser(AbstractParser):
     ):
         super().__init__(record_separator, field_separator or r"[ \t]+")
 
-    def gen_records(self, stream: io.BytesIO):
+    def gen_records(
+        self, stream: io.BytesIO
+    ) -> Generator[Tuple[List[str], str], None, None]:
         assert self.field_separator
         gen_lines = _gen_split(stream, self.record_separator)
         return self.gen_records_from_lines(gen_lines)
 
-    def gen_records_from_lines(self, gen_lines: Iterable[bytes]):
+    def gen_records_from_lines(
+        self, gen_lines: Iterable[bytes]
+    ) -> Generator[Tuple[List[str], str], None, None]:
+        """Generates a record from the given iterable of lines."""
         assert self.field_separator
         try:
             for record_bytes in gen_lines:
@@ -213,6 +238,8 @@ class AwkParser(AbstractParser):
 
 
 class CustomSniffer(csv.Sniffer):
+    """A CSV sniffer that detects which CSV dialect and delimiters to use."""
+
     def __init__(self):
         super().__init__()
         self._force_dialect: Optional[csv.Dialect] = None
@@ -230,33 +257,39 @@ class CustomSniffer(csv.Sniffer):
         self.dialect.doublequote = True
         return self.dialect
 
-    def update_dialect(self, line):
+    def update_dialect(self, line: str) -> bool:
+        """Sniffs the given line and updates the dialect accordingly."""
         if self._force_dialect is not None:
             return False
         if self.dialect_doublequote_decided:
             return False
         assert self.dialect
-        if re.search(r'[^\\]""', line):
+        if re.search(r'[^\\]""', line): # type: ignore
             self.dialect.doublequote = True
             return False
-        elif '\\"' in line:
+        if '\\"' in line:
             self.dialect.doublequote = False
             self.dialect.escapechar = "\\"
             return True
+        return False
 
 
 class CsvReader:
-    def __init__(self, dialect: Union[str, csv.Dialect, Type[csv.Dialect]]):
+    """A CSV reader that can dynamically update which dialect it is using after
+    construction."""
+
+    def __init__(self, dialect: Union[csv.Dialect, Type[csv.Dialect]]):
         self._dialect = dialect
         self._current_line = None
         self._csv_reader = csv.reader(self, dialect)
 
     @property
-    def dialect(self) -> Union[str, csv.Dialect, Type[csv.Dialect]]:
+    def dialect(self) -> Union[csv.Dialect, Type[csv.Dialect]]:
+        """The dialect of the CSV."""
         return self._dialect
 
     @dialect.setter
-    def dialect(self, dialect: Union[str, csv.Dialect, Type[csv.Dialect]]):
+    def dialect(self, dialect: Union[csv.Dialect, Type[csv.Dialect]]):
         self._dialect = dialect
         self._csv_reader = csv.reader(self, dialect)
 
@@ -267,12 +300,15 @@ class CsvReader:
         assert self._current_line is not None
         return self._current_line
 
-    def read(self, line):
+    def read(self, line) -> List[str]:
+        """Reads a line with the CSV reader, returning the list of fields."""
         self._current_line = line
         return next(self._csv_reader)
 
 
 class CsvParser(AbstractParser):
+    """A parser for CSV format."""
+
     COMMON_DELIMITERS = ",\t;"
 
     def __init__(
@@ -309,7 +345,9 @@ class CsvParser(AbstractParser):
         self.dialect = sniffer.sniff(sample_str, delimiters=self.field_separator)
         return sniffer
 
-    def gen_records(self, stream: io.BytesIO):
+    def gen_records(
+        self, stream: io.BytesIO
+    ) -> Generator[Tuple[List[str], str], None, None]:
         gen_lines = _gen_split(stream, self.record_separator)
         sniffer = None
         if self.dialect is None:
@@ -319,7 +357,8 @@ class CsvParser(AbstractParser):
 
     def gen_records_from_lines(
         self, gen_lines: Iterable[bytes], sniffer: Optional[CustomSniffer]
-    ) -> Generator[Tuple[Any, str], None, None]:
+    ) -> Generator[Tuple[List[str], str], None, None]:
+        """Generates the records from a given iterable of lines."""
         assert self.dialect
         csv_reader = CsvReader(self.dialect)
         for line in gen_lines:
@@ -331,11 +370,18 @@ class CsvParser(AbstractParser):
 
 
 class JsonParser(AbstractParser):
+    """A parser that parses table-like JSON objects. A JSON object is table-like
+    if it is an array of JSON objects, where each object is in the format `{
+    "column_name": value }."""
+
     def __init__(self, record_separator: str, field_separator: Optional[str]):
         super().__init__(record_separator, field_separator)
         self.has_header = True
 
-    def gen_records_from_json(self, json_object: Any):
+    def gen_records_from_json(
+        self, json_object: Iterable[Any]
+    ) -> Generator[Tuple[Iterable[str], str], None, None]:
+        """Generates the records from a given iterable of JSON objects."""
         for i, record in enumerate(json_object):
             if not isinstance(record, dict):
                 raise TypeError("Input is not an array of objects")
@@ -360,8 +406,9 @@ PARSERS = {
 
 
 def create_parser(
-    input_format, record_separator, field_separator
+    input_format: str, record_separator: str, field_separator: str
 ) -> Callable[[], AbstractParser]:
+    """Creates a parser from the given `input_format`."""
     try:
         return PARSERS[input_format](record_separator, field_separator)
     except KeyError as exc:
@@ -371,7 +418,7 @@ def create_parser(
 class Printer(abc.ABC):
     """A printer that defines how to turn the result of the pyolin program into output to stdout."""
 
-    def format_value(self, value):
+    def format_value(self, value: Any) -> str:
         """Formats a "single value", as opposed to compound values like lists or iterables."""
         if isinstance(value, str):
             return value  # String is a sequence too. Handle it first
@@ -382,7 +429,8 @@ class Printer(abc.ABC):
         else:
             return str(value)
 
-    def format_record(self, record):
+    def format_record(self, record) -> List[str]:
+        """Formats a record, which is a sequence of fields."""
         if isinstance(record, (str, bytes)):
             return [self.format_value(record)]
         elif isinstance(record, collections.abc.Iterable):
@@ -409,7 +457,9 @@ class Printer(abc.ABC):
             header.append(header_item)
         return header if has_real_header else _SynthesizedHeader(header)
 
-    def print_result(self, result, *, header=None):
+    def print_result(self, result: Any, *, header: Optional[Header] = None):
+        """Prints the result out to stdout according to the concrete
+        implementation."""
         try:
             for line in self.gen_result(result, header=header):
                 print(line, flush=True, end="")
@@ -420,14 +470,9 @@ class Printer(abc.ABC):
     def to_table(
         self, result: Any, *, header: Optional[Sequence[str]] = None
     ) -> Tuple[Sequence[str], Iterable[Any]]:
+        """Turns the given `result` into a table format: (header, records)"""
         header = header or HasHeader.get(result)
-        if "pandas" in sys.modules:
-            # Re-import it only if it is already imported before. If not the result can't be a
-            # dataframe.
-            import pandas as pd
-        else:
-            pd = None
-        if pd and isinstance(result, pd.DataFrame):
+        if "pandas" in sys.modules and isinstance(result, sys.modules["pandas"].DataFrame):
             header = header or _SynthesizedHeader([str(i) for i in result.columns])
             result = (self.format_record(row) for _, row in result.iterrows())
             return (header, result)
@@ -450,6 +495,9 @@ class Printer(abc.ABC):
 
     @abc.abstractmethod
     def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        """Generates a string to be printed to stdout. This string can be a
+        partial result that is continued by the next yielded string from this
+        generator."""
         raise NotImplementedError()
 
 
@@ -461,15 +509,15 @@ class _SynthesizedHeader(List[I]):
 
 
 class AutoPrinter(Printer):
+    """A printer that automatically decides which format to print the results
+    in."""
     _printer: Printer
 
     def _infer_suitable_printer(self, result: Any) -> str:
         if isinstance(result, dict):
             return "json"
         if "pandas" in sys.modules:
-            import pandas as pd
-
-            if isinstance(result, pd.DataFrame):
+            if isinstance(result, sys.modules['pandas'].DataFrame):
                 return "markdown"
         if isinstance(result, collections.abc.Iterable) and not isinstance(
             result, (str, Record, tuple, bytes)
@@ -492,6 +540,8 @@ class AutoPrinter(Printer):
 
 
 class AwkPrinter(Printer):
+    """A printer that prints out the results in a space-separated format,
+    similar to AWK."""
     def __init__(self):
         self.record_separator = "\n"
         self.field_separator = " "
@@ -507,6 +557,7 @@ class AwkPrinter(Printer):
 
 
 class CsvPrinter(Printer):
+    """A printer that prints out the results in CSV format."""
     def __init__(self, *, print_header=False, delimiter=",", dialect=csv.excel):
         self.print_header = print_header
         self.delimiter = delimiter
@@ -540,7 +591,7 @@ class CsvPrinter(Printer):
 
 class _MarkdownRowFormat:
     def __init__(self, widths):
-        self._width_formats = ["{:%d}" % w for w in widths]
+        self._width_formats = [f"{{:{w}}}" for w in widths]
         self._row_template = "| " + " | ".join(self._width_formats) + " |"
         self._cont_row_template = ": " + " : ".join(self._width_formats) + " :"
         self._wrappers = [
@@ -554,11 +605,12 @@ class _MarkdownRowFormat:
         ]
 
     def format(self, cells: Sequence[Any]) -> str:
+        """Formats the given list of cells in Markdown."""
         cell_lines = [
             wrapper.wrap(str(cell)) if wrapper else [cell]
-            for wrapper, cell in zip_longest(self._wrappers, cells)
+            for wrapper, cell in zip_longest(self._wrappers, cells) # type: ignore
         ]
-        line_cells = zip_longest(*cell_lines, fillvalue="")
+        line_cells = zip_longest(*cell_lines, fillvalue="") # type: ignore
         result = ""
         for i, line_cell in enumerate(line_cells):
             # If there are extra columns that are not found in the header, also print them out.
@@ -578,6 +630,9 @@ class _MarkdownRowFormat:
 
 
 class MarkdownPrinter(Printer):
+    """Prints the result in the markdown table format. Note that if the input
+    data does not conform to a table-like structure (e.g. have different number
+    of fields in different rows), the output may not be valid markdown."""
     def _allocate_width(self, header: Sequence[str], table):
         if sys.stdout.isatty():
             available_width, _ = shutil.get_terminal_size((100, 24))
@@ -670,11 +725,13 @@ class JsonPrinter(Printer):
 
 
 class ReprPrinter(Printer):
+    """Prints the result out using Python's `repr()` function."""
     def gen_result(self, result, *, header=None):
         yield repr(result) + "\n"
 
 
 class StrPrinter(Printer):
+    """Prints the result out using Python's `str()` function."""
     def gen_result(self, result, *, header=None):
         result = str(result)
         if result:
@@ -682,6 +739,8 @@ class StrPrinter(Printer):
 
 
 class BinaryPrinter(Printer):
+    """Writes the result as binary out to stdout. This is typically used when
+    redirecting the output to a file or to another program."""
     def gen_result(self, result, *, header=None):
         if isinstance(result, str):
             yield bytes(result, "utf-8")
@@ -713,4 +772,5 @@ PRINTERS = {
 
 
 def new_printer(output_format: str) -> Printer:
+    """Creates a new printer with the given output format."""
     return PRINTERS[output_format]()

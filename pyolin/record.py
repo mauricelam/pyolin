@@ -1,30 +1,43 @@
+"""Representations of a Record (a.k.a. a row) coming from a parser."""
 import abc
 import itertools
 from itertools import zip_longest
-from typing import Iterable, Optional, Sequence, TypeVar
+from typing import Iterable, Optional, TypeVar
 
 from .field import Field
-from .util import StreamingSequence, cached_property
+from .util import StreamingSequence, cache
 
 
 class HasHeader:
-    @staticmethod
-    def get(o: 'HasHeader') -> Sequence[str]:
-        if isinstance(o, HasHeader):
-            return o.header
+    """A "marker interface" marking that the implemented object has a header."""
 
-    @abc.abstractproperty
-    def header(self) -> Sequence[str]:
+    @staticmethod
+    def get(has_header: "HasHeader") -> Optional["Header"]:
+        """Gets the header from the given `has_header` object."""
+        if isinstance(has_header, HasHeader):
+            return has_header.header
+
+    @property
+    @abc.abstractmethod
+    def header(self) -> Optional["Header"]:
+        """The header for this object."""
         raise NotImplementedError()
 
 
 class Record(tuple):
-    def __new__(cls, *args, recordstr="", header: Optional['Header']=None):
+    """A record (a.k.a. a row) in the output result."""
+
+    def __new__(cls, *args, recordstr="", header: Optional["Header"] = None):
+        _ = recordstr  # Only used in __init__
         return super().__new__(
-            cls, tuple(Field(f, header=h) for f, h in zip_longest(args, header or ()))
+            cls,
+            tuple(
+                Field(f, header=h) for f, h in zip_longest(args, header or ())
+            ),  # type: ignore
         )
 
-    def __init__(self, *args, recordstr="", header: Optional['Header']=None):
+    def __init__(self, *args, recordstr="", header: Optional["Header"] = None):
+        _ = header, args  # Only used in __new__
         self.str = recordstr
         self.num: int = -1
 
@@ -39,16 +52,23 @@ class Record(tuple):
 
 
 class Header(Record):
-    pass
+    """A header row. Structurally this is the same as a Record, but the type
+    marks it for special treatment in certain printers (e.g. in Markdown
+    formatting.)"""
 
 
-T = TypeVar('T')
+T = TypeVar("T")
+
+
 class RecordSequence(StreamingSequence[T], HasHeader):
+    """A sequence of records."""
+
     def __init__(self, records_iter: Iterable[Record]):
         seq1, self._seq_for_header = itertools.tee(records_iter)
         super().__init__(r for r in seq1 if not isinstance(r, Header))
 
-    @cached_property
+    @property
+    @cache
     def header(self) -> Optional[Header]:
         firstrow = next(self._seq_for_header, None)
         if isinstance(firstrow, Header):

@@ -1,3 +1,4 @@
+"""Implementation of the Python code parsing logic in Pyolin."""
 import ast
 import io
 import textwrap
@@ -69,7 +70,7 @@ def _replace_with_newline(tokens: List[tokenize.TokenInfo], pos: int) -> None:
         )
 
 
-def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
+def _parse(prog: str) -> Tuple[ast.Module, ast.Expression]:
     """
     Parse the given pyolin program into the exec statements and eval statements that can be
     evaluated directly, applying the necessary syntax transformations as necessary.
@@ -86,6 +87,7 @@ def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
     try:
         exec_statements = ast.parse(prog_stmts, mode="exec")
     except SyntaxError as exc:
+        assert exc.offset
         raise RuntimeError(
             textwrap.dedent(
                 f"""\
@@ -103,8 +105,10 @@ def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
             eval_expr = ast.parse(f"({prog_expr} else _UNDEFINED_)", mode="eval")
         except SyntaxError:
             try:
+                # Check if it's executable to provide better error message
                 ast.parse(f"{prog_expr}", mode="exec")
             except SyntaxError:
+                assert exc.offset
                 raise RuntimeError(
                     textwrap.dedent(
                         f"""\
@@ -126,11 +130,17 @@ def _parse(prog: str) -> Tuple[ast.AST, ast.AST]:
 
 
 class UserError(RuntimeError):
+    """An error in the user-provided Pyolin program."""
+
     def formatted_tb(self):
+        """Formats the traceback of this error, hiding any Pyolin internals from
+        the stack trace."""
         cause = self.__cause__
         assert isinstance(cause, BaseException)
+        exception_traceback = cause.__traceback__  # pylint: disable=no-member
+        assert exception_traceback
         return traceback.format_exception(
-            cause.__class__, cause, cause.__traceback__.tb_next  # pylint: disable=no-member
+            cause.__class__, cause, exception_traceback.tb_next
         )
 
     def __str__(self):
@@ -138,6 +148,8 @@ class UserError(RuntimeError):
 
 
 class Prog:
+    """The intermediate representation of the user-provided Pyolin program."""
+
     _exec: CodeType
     _eval: CodeType
 
@@ -152,10 +164,11 @@ class Prog:
             self._eval = compile(eval_code, filename="pyolin_user_prog.py", mode="eval")
 
     def exec(self, global_dict: Dict[str, Any]) -> Any:
+        """Executes the user-provided Pyolin program and returns the result."""
         try:
-            exec(self._exec, global_dict)
-            return eval(self._eval, global_dict)
+            exec(self._exec, global_dict)  # pylint: disable=exec-used
+            return eval(self._eval, global_dict)  # pylint: disable=eval-used
         except NoMoreRecords:
             raise
-        except Exception as e:
-            raise UserError() from e
+        except Exception as exc:
+            raise UserError() from exc
