@@ -38,6 +38,7 @@ jobs:
         user: __token__
         password: ${{ secrets.TEST_PYPI_API_TOKEN }}
         repository-url: https://test.pypi.org/legacy/
+        skip-existing: true
     - name: Publish distribution 📦 to PyPI
       if: "!github.event.release.prerelease"
       uses: pypa/gh-action-pypi-publish@release/v1
