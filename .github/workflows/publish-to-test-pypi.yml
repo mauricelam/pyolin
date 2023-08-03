@@ -10,7 +10,7 @@ name: Upload Python Package to Test PyPI
 
 on:
   release:
-    types: [unpublished]
+    types: [published]
 
 permissions:
   contents: read
