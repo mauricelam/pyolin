@@ -27,7 +27,9 @@ def _test_file(file):
 
 def run_cli(prog, *, input_file="data_nba.txt", extra_args=(), **kwargs):
     with run_capturing_output(errmsg=f"Prog: {prog}") as output:
+        # pylint:disable=protected-access
         pyolin._command_line(prog, *extra_args, input_=_test_file(input_file), **kwargs)
+        # pylint:enable=protected-access
         return output
 
 
@@ -700,7 +702,7 @@ Actual:
 
     def test_percentage(self):
         self.assert_pyolin(
-            "(r[0], round(r[3] / sum(r[3] for r in records), 2)) " "for r in records",
+            "(r[0], round(r[3] / sum(r[3] for r in records), 2)) for r in records",
             """\
             | 0       | 1    |
             | ------- | ---- |
@@ -1362,7 +1364,7 @@ Actual:
             run_cli("a = record[0]; b = records; b")
         self.assertEqual(
             "Cannot access both record scoped and table scoped variables",
-            str(context.exception.__cause__.__cause__),
+            str(context.exception.__cause__.__cause__), # type: ignore
         )
 
     def test_access_table_and_record(self):
@@ -1370,7 +1372,7 @@ Actual:
             run_cli("a = records; b = record[0]; b")
         self.assertEqual(
             "Cannot access both record scoped and table scoped variables",
-            str(context.exception.__cause__.__cause__),
+            str(context.exception.__cause__.__cause__), # type: ignore
         )
 
     def test_empty_record_scoped(self):
@@ -1848,9 +1850,11 @@ Actual:
     def test_repr_printer_table(self):
         self.assert_pyolin(
             "records",
+            # pylint:disable=line-too-long
             """\
             [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
             """,
+            # pylint:enable=line-too-long
             output_format="repr",
         )
 
@@ -2013,7 +2017,7 @@ Actual:
 
         def format_exception_only(exc):
             if sys.version_info >= (3, 10):
-                return traceback.format_exception_only(exc)  # type: ignore
+                return traceback.format_exception_only(exc)  # pylint:disable=no-value-for-parameter
             else:
                 return traceback.format_exception_only(type(exc), exc)  # type: ignore
 
@@ -2086,7 +2090,7 @@ Actual:
             run_cli("a = records[0]; parser = 123; 123")
         self.assertEqual(
             "Cannot set parser after it has been used",
-            str(context.exception.__cause__.__cause__),
+            str(context.exception.__cause__.__cause__), # type: ignore
         )
 
     def test_records_if_undefined(self):
@@ -2121,7 +2125,7 @@ Actual:
             run_cli("idontknowwhatisthis + 1")
         self.assertEqual(
             "name 'idontknowwhatisthis' is not defined",
-            str(context.exception.__cause__.__cause__),
+            str(context.exception.__cause__.__cause__), # type: ignore
         )
 
     def test_record_first(self):

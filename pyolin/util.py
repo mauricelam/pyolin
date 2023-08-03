@@ -20,6 +20,7 @@ from typing import (
     TypeVar,
     Union,
 )
+import typing
 
 
 def cache(func):
@@ -220,13 +221,13 @@ class LazyItem(Item[I]):
         self._cached = False
         self._on_accessed = on_accessed
 
-    def __call__(self, *arg, **kwargs):
+    def __call__(self, *arg, **kwargs) -> I:
         if not self._cached:
             self._val = super().__call__(*arg, **kwargs)
             if self._on_accessed:
                 self._on_accessed()
             self._cached = True
-        return self._val
+        return typing.cast(I, self._val)
 
 
 def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:

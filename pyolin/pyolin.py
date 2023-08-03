@@ -1,3 +1,5 @@
+"""Main entry point for Pyolin, the utility to easily write Python one-liners."""
+
 import argparse
 import importlib
 import itertools
@@ -19,6 +21,7 @@ from typing import (
 )
 from hashbang import command, Argument
 
+from .ioformat import PARSERS, PRINTERS, Printer, create_parser, new_printer
 from .util import (
     BoxedItem,
     LazyItem,
@@ -28,17 +31,18 @@ from .util import (
     _UNDEFINED_,
     NoMoreRecords,
 )
-from .ioformat import *
 from .record import RecordSequence
 from .parser import Prog
 
 
 @contextmanager
-def get_io(input_file: Optional[str]) -> Generator[IO[Any], None, None]:
-    if input_file:
+def get_io(input_filename: Optional[str]) -> Generator[IO[Any], None, None]:
+    """Get the IO from the given input filename, or from stdin if `input_file`
+    is None."""
+    if input_filename:
         mode = "rb"
-        with open(input_file, mode) as f:
-            yield f
+        with open(input_filename, mode) as input_file:
+            yield input_file
     else:
         yield sys.stdin.buffer
 
@@ -47,6 +51,8 @@ I = TypeVar("I")
 
 
 class RecordScoped(LazyItem, Generic[I]):
+    """An Item in the global scope that is record scoped, which will cause the
+    program to be executed multiple times until the input is exhausted."""
     _on_accessed: Callable[[], None]
 
     def __init__(self, generator: RecordSequence, *, on_accessed: Callable[[], None]):
@@ -78,7 +84,7 @@ def _execute_internal(
     prog,
     *args,
     input_: Optional[str] = None,
-    field_separator=None,
+    field_separator: Optional[str]=None,
     record_separator="\n",
     input_format="auto",
     output_format="auto",
@@ -104,17 +110,17 @@ def _execute_internal(
             contents = io_stream.read()
             try:
                 return contents.decode("utf-8")
-            except Exception:
+            except UnicodeDecodeError:
                 return contents
 
     record_seq = RecordSequence(gen_records(input_))
 
     def get_dataframe():
-        import pandas as pd
+        import pandas as pd  # pylint:disable=import-outside-toplevel
 
         header = [f.str for f in record_seq.header] if record_seq.header else None
-        df = pd.DataFrame(record_seq, columns=header)
-        return df.apply(pd.to_numeric, errors="ignore")  # type: ignore
+        dataframe = pd.DataFrame(record_seq, columns=header)
+        return dataframe.apply(pd.to_numeric, errors="ignore")  # type: ignore
 
     scope = "undecided"
 
