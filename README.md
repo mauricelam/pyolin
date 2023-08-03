@@ -114,6 +114,13 @@ Available variables:
 
 ## Parsers
 
+### `auto`
+
+A parser that automatically detects the input data format. Supports JSON, field separated text (awk style), CSV, and TSV. The input detection logic is roughly as follows:
+- If the input data contains a relatively uniform number of comma or tab delimiters, parse as CSV / TSV
+- If the input data starts with '{' or '[', try to parse as JSON
+- Otherwise, treat as `awk`.
+
 ### `awk`
 alias: `unix`
 
