@@ -7,6 +7,7 @@ import tokenize
 import traceback
 from types import CodeType
 from typing import Any, Dict, Iterable, List, Tuple
+import typing
 
 from .util import debug, NoMoreRecords
 
@@ -154,20 +155,25 @@ class Prog:
     _eval: CodeType
 
     def __init__(self, prog: Any):
-        if hasattr(prog, "__code__"):
-            self._exec = compile("", filename="pyolin_user_prog.py", mode="exec")
-            self._eval = prog.__code__
+        if hasattr(prog, '__code__'):
+            self.func = prog
+            self.func_code = None
         else:
             exec_code, eval_code = _parse(prog)
             debug("Resulting AST", ast.dump(exec_code), ast.dump(eval_code))
-            self._exec = compile(exec_code, filename="pyolin_user_prog.py", mode="exec")
-            self._eval = compile(eval_code, filename="pyolin_user_prog.py", mode="eval")
+            func_def = ast.parse("def __pyolin_prog(): pass")
+            function_body = typing.cast(ast.FunctionDef, func_def.body[0]).body
+            function_body.extend(exec_code.body)
+            function_body.append(ast.Return(eval_code.body, lineno=1, col_offset=0))
+            self.func_code = compile(func_def, filename="pyolin_user_prog.py", mode="exec")
 
     def exec(self, global_dict: Dict[str, Any]) -> Any:
         """Executes the user-provided Pyolin program and returns the result."""
         try:
-            exec(self._exec, global_dict)  # pylint: disable=exec-used
-            return eval(self._eval, global_dict)  # pylint: disable=eval-used
+            if self.func_code:
+                exec(self.func_code, global_dict)  # pylint:disable=exec-used
+                self.func = global_dict["__pyolin_prog"]
+            return eval(self.func.__code__, global_dict)  # pylint:disable=eval-used
         except NoMoreRecords:
             raise
         except Exception as exc:
