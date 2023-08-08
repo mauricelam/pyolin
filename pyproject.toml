@@ -23,6 +23,9 @@ optional-dependencies.dev = [
     "pandas"
 ]
 
+[project.scripts]
+pyolin = "pyolin.pyolin:_command_line.execute"
+
 [project.urls]
 "Homepage" = "https://github.com/mauricelam/pyolin"
 "Bug Tracker" = "https://github.com/mauricelam/pyolin/issues"
