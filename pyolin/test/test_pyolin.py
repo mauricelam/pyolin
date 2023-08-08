@@ -4,6 +4,7 @@
 # pylint: disable=too-many-lines
 
 import contextlib
+import io
 import os
 import traceback
 from typing import Any, Callable, Sequence, Union
@@ -21,20 +22,22 @@ from pyolin.util import _UNDEFINED_
 from .utils import ErrorWithStderr, run_capturing_output, timeout
 
 
-def _test_file(file):
+def _test_file(file: Union[str, bytes]):
+    if isinstance(file, bytes):
+        return io.BytesIO(file)
     return os.path.join(os.path.dirname(__file__), file)
 
 
-def run_cli(prog, *, input_file="data_nba.txt", extra_args=(), **kwargs):
+def run_cli(prog, *, input_: Union[str, bytes]="data_nba.txt", extra_args=(), **kwargs):
     with run_capturing_output(errmsg=f"Prog: {prog}") as output:
         # pylint:disable=protected-access
-        pyolin._command_line(prog, *extra_args, input_=_test_file(input_file), **kwargs)
+        pyolin._command_line(prog, *extra_args, input_=_test_file(input_), **kwargs)
         # pylint:enable=protected-access
         return output
 
 
-def run_pyolin(prog, *, input_file="data_nba.txt", **kwargs):
-    return pyolin.run(prog, input_=_test_file(input_file), **kwargs)
+def run_pyolin(prog, *, input_: Union[str, bytes]="data_nba.txt", **kwargs):
+    return pyolin.run(prog, input_=_test_file(input_), **kwargs)
 
 
 @contextlib.contextmanager
@@ -95,7 +98,7 @@ Actual:
         input_file: str = "data_nba.txt",
         **kwargs,
     ):
-        actual = run_pyolin(prog, input_file=input_file, **kwargs)
+        actual = run_pyolin(prog, input_=input_file, **kwargs)
         self.assertEqual(actual, expected)
 
     def assert_pyolin(
@@ -103,15 +106,15 @@ Actual:
         prog: Union[str, Callable[[], Any]],
         expected: Union[str, bytes],
         *,
-        input_file: str = "data_nba.txt",
+        input_: Union[str, bytes] = "data_nba.txt",
         extra_args: Sequence[str] = (),
         **kwargs,
     ):
-        actual = run_cli(prog, input_file=input_file, extra_args=extra_args, **kwargs)
+        actual = run_cli(prog, input_=input_, extra_args=extra_args, **kwargs)
         if isinstance(expected, str):
-            self._myassert(actual.getvalue(), expected, prog, input_file)
+            self._myassert(actual.getvalue(), expected, prog, input_)
         else:
-            self._myassert(actual.getbytes(), expected, prog, input_file)
+            self._myassert(actual.getbytes(), expected, prog, input_)
 
     def test_lines(self):
         self.assert_pyolin(
@@ -737,7 +740,7 @@ Actual:
             | dir/fileb.txt          |
             | dir/subdir/subfile.txt |
             """,
-            input_file="data_files.txt",
+            input_="data_files.txt",
         )
 
     def test_record_variables(self):
@@ -765,14 +768,13 @@ Actual:
 
     def test_boolean(self):
         self.assert_pyolin(
-            "record if record[1].bool",
+            "record[0].bool, record[1].bool",
             """\
-            | 0          | 1    | 2  | 3    |
-            | ---------- | ---- | -- | ---- |
-            | dir        | True | 30 | 40.0 |
-            | dir/subdir | True | 12 | 42.0 |
+            | 0     | 1    |
+            | ----- | ---- |
+            | False | True |
             """,
-            input_file="data_files.txt",
+            input_=b"0 1",
         )
 
     def test_awk_header_detection(self):
@@ -784,7 +786,7 @@ Actual:
             | dir        | True  | 30   | 40.0  |
             | dir/subdir | True  | 12   | 42.0  |
             """,
-            input_file="data_files_with_header.txt",
+            input_="data_files_with_header.txt",
         )
 
     def test_awk_output_with_header(self):
@@ -795,7 +797,7 @@ Actual:
             dir True 30 40.0
             dir/subdir True 12 42.0
             """,
-            input_file="data_files_with_header.txt",
+            input_="data_files_with_header.txt",
             output_format="awk",
         )
 
@@ -805,7 +807,7 @@ Actual:
             f"""\
             {os.path.dirname(__file__)}/data_files.txt
             """,
-            input_file="data_files.txt",
+            input_="data_files.txt",
         )
 
     def test_bytes(self):
@@ -881,7 +883,7 @@ Actual:
             | 12 | 42.0 | False |
             | 11 | 53.0 | False |
             """,
-            input_file="data_files.txt",
+            input_="data_files.txt",
         )
 
     def test_fields_comparison(self):
@@ -899,7 +901,7 @@ Actual:
             | 12 | 42.0 | False |
             | 11 | 53.0 | False |
             """,
-            input_file="data_files.txt",
+            input_="data_files.txt",
         )
 
     def test_multiplication(self):
@@ -1014,7 +1016,7 @@ Actual:
             | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
             | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
             """,
-            input_file="data_grades_simple_csv.csv",
+            input_="data_grades_simple_csv.csv",
             field_separator=r",",
         )
 
@@ -1034,7 +1036,7 @@ Actual:
             | Heffalump | Harvey     | 632-79-9439 | 30 | 0 | 1  | 0 | 20  | 0 | 30 | 0  | 40 | 0  | C  |
             """,
             # pylint:enable=line-too-long
-            input_file="data_grades_simple_csv.csv",
+            input_="data_grades_simple_csv.csv",
             field_separator=r"[\.,]",
             input_format="awk",
         )
@@ -1060,7 +1062,7 @@ Actual:
             | 0         |
             | 0         |
             """,
-            input_file="data_onerow.csv",
+            input_="data_onerow.csv",
             record_separator=r",",
         )
 
@@ -1076,7 +1078,7 @@ Actual:
             | .000E+00 | 1.000E+00 |
             |          | 1 | 0 | 0 |
             """,
-            input_file="data_onerow.csv",
+            input_="data_onerow.csv",
             record_separator=r",2",
         )
 
@@ -1104,7 +1106,7 @@ Actual:
             | 0        |
             | 0        |
             """,
-            input_file="data_onerow.csv",
+            input_="data_onerow.csv",
             record_separator=r"[,.]",
         )
 
@@ -1122,7 +1124,7 @@ Actual:
             | George    | Boy        | 345-67-3901 |
             | Heffalump | Harvey     | 632-79-9439 |
             """,
-            input_file="data_grades_simple_csv.csv",
+            input_="data_grades_simple_csv.csv",
             input_format="csv",
         )
 
@@ -1139,7 +1141,7 @@ Actual:
             | Dateline Friday  |
             | Dateline Sunday  |
             """,
-            input_file="data_news_decline.csv",
+            input_="data_news_decline.csv",
             input_format="csv",
         )
 
@@ -1156,7 +1158,7 @@ Actual:
             | "Dateline Friday",  4.1, 4.1, 3.9 |
             | "Dateline Sunday",  3.5, 3.2, 3.1 |
             """,
-            input_file="data_news_decline.csv",
+            input_="data_news_decline.csv",
             input_format="csv",
         )
 
@@ -1173,7 +1175,7 @@ Actual:
             |                       | Blankman |                                  |
             | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
             """,
-            input_file="data_addresses.csv",
+            input_="data_addresses.csv",
             input_format="csv",
         )
 
@@ -1190,7 +1192,7 @@ Actual:
             |                       | Blankman |                                  |
             | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
             """,
-            input_file="data_addresses.csv",
+            input_="data_addresses.csv",
             input_format="csv_excel",
         )
 
@@ -1207,7 +1209,7 @@ Actual:
             | |Blankman|                                     |
             | Joan "the bone", Anne|Jet|9th, at Terrace plc  |
             """,
-            input_file="data_addresses_unix.csv",
+            input_="data_addresses_unix.csv",
             input_format="csv",
         )
 
@@ -1224,7 +1226,7 @@ Actual:
             | Dateline Friday  | 4.1 |
             | Dateline Sunday  | 3.2 |
             """,
-            input_file="data_news_decline.tsv",
+            input_="data_news_decline.tsv",
             input_format="csv",
             field_separator="\t",
         )
@@ -1291,7 +1293,7 @@ Actual:
             | George    | 345-67-3901 | 4     |
             | Heffalump | 632-79-9439 | 40    |
             """,
-            input_file="data_grades_with_header.csv",
+            input_="data_grades_with_header.csv",
             input_format="csv",
         )
 
@@ -1308,7 +1310,7 @@ Actual:
             | George    | 345-67-3901 | 4.0  |
             | Heffalump | 632-79-9439 | 40.0 |
             """,
-            input_file="data_grades_simple_csv.csv",
+            input_="data_grades_simple_csv.csv",
             input_format="csv",
         )
 
@@ -1324,7 +1326,7 @@ Actual:
             | Stephen               | 7452 Terrace "At the Plaza" road |
             | Joan "the bone", Anne | 9th, at Terrace plc              |
             """,
-            input_file="data_addresses_with_header.csv",
+            input_="data_addresses_with_header.csv",
             input_format="csv_excel",
         )
 
@@ -1344,7 +1346,7 @@ Actual:
             | Final      |
             | Grade      |
             """,
-            input_file="data_grades_with_header.csv",
+            input_="data_grades_with_header.csv",
             input_format="csv",
         )
 
@@ -1376,10 +1378,10 @@ Actual:
         )
 
     def test_empty_record_scoped(self):
-        self.assert_pyolin("record[0]", "", input_file=os.devnull)
+        self.assert_pyolin("record[0]", "", input_=os.devnull)
 
     def test_empty_table_scoped(self):
-        self.assert_pyolin("record for record in records", "", input_file=os.devnull)
+        self.assert_pyolin("record for record in records", "", input_=os.devnull)
 
     def test_semicolon_in_string(self):
         self.assert_pyolin('"hello; world"', "hello; world\n")
@@ -1473,7 +1475,7 @@ Actual:
             ''',
             input_format="csv",
             output_format="csv",
-            input_file="data_addresses.csv",
+            input_="data_addresses.csv",
         )
 
     def test_csv_output_with_header(self):
@@ -1489,7 +1491,7 @@ Actual:
             George,345-67-3901,4\r
             Heffalump,632-79-9439,40\r
             """,
-            input_file="data_grades_with_header.csv",
+            input_="data_grades_with_header.csv",
             input_format="csv",
             output_format="csv",
         )
@@ -1513,7 +1515,7 @@ Actual:
             George,345-67-3901,4\r
             Heffalump,632-79-9439,40\r
             """,
-            input_file="data_grades_with_header.csv",
+            input_="data_grades_with_header.csv",
             input_format="csv",
             output_format="csv",
         )
@@ -1548,7 +1550,7 @@ Actual:
             George,345-67-3901,4.0\r
             Heffalump,632-79-9439,40.0\r
             """,
-            input_file="data_grades_simple_csv.csv",
+            input_="data_grades_simple_csv.csv",
             input_format="csv",
             output_format="csv",
         )
@@ -1567,7 +1569,7 @@ Actual:
             | George    | 345-67-3901 | 4     |
             | Heffalump | 632-79-9439 | 40    |
             """,
-            input_file="data_grades_with_header.csv",
+            input_="data_grades_with_header.csv",
             input_format="csv",
             output_format="markdown",
         )
@@ -1670,7 +1672,7 @@ Actual:
                 :             : despite day 1 which is typical of a new          :             :
                 :             : mechanical watch                                 :             :
                 """,
-                input_file="data_amazon_reviews.tsv",
+                input_="data_amazon_reviews.tsv",
                 input_format="tsv",
                 output_format="markdown",
             )
@@ -1686,7 +1688,7 @@ Actual:
                 :   :   :   :   :   :   :   :   :   :   :    :       : 789123456789 :     :    :
                 :   :   :   :   :   :   :   :   :   :   :    :       : 123456789    :     :    :
                 """,
-                input_file="data_formatting.txt",
+                input_="data_formatting.txt",
                 output_format="markdown",
             )
 
@@ -1735,7 +1737,7 @@ Actual:
                 {"Path": "dir/subdir/subfile.txt", "IsDir": "False", "Size": 11, "Score": 53.0}
             ]
             """,
-            input_file="data_files_with_header.txt",
+            input_="data_files_with_header.txt",
             output_format="json",
         )
 
@@ -1753,7 +1755,7 @@ Actual:
             | yellow  | #ff0  |
             | black   | #000  |
             """,
-            input_file="data_colors.json",
+            input_="data_colors.json",
             input_format="json",
             output_format="markdown",
         )
@@ -1764,7 +1766,7 @@ Actual:
             """\
             True
             """,
-            input_file="data_colors.json",
+            input_="data_colors.json",
             input_format="json",
         )
 
@@ -1819,7 +1821,7 @@ Actual:
                 self.assert_pyolin(
                     prog,
                     expected,
-                    input_file="data_colors.json",
+                    input_="data_colors.json",
                     input_format="json",
                     output_format="markdown",
                 )
@@ -1921,7 +1923,7 @@ Actual:
             """\
             21
             """,
-            input_file="data_pickle",
+            input_="data_pickle",
         )
 
     def test_binary_input_can_be_accessed(self):
@@ -1930,7 +1932,7 @@ Actual:
             """\
             bytes
             """,
-            input_file="data_pickle",
+            input_="data_pickle",
         )
 
     def test_binary_input_pickle(self):
@@ -1939,7 +1941,7 @@ Actual:
             """\
             hello world
             """,
-            input_file="data_pickle",
+            input_="data_pickle",
         )
 
     def test_binary_printer(self):
@@ -2007,13 +2009,13 @@ Actual:
                 self.assert_pyolin(
                     "records[0]",
                     repr(expected_output) + "\n",
-                    input_file=input_file,
+                    input_=input_file,
                     output_format="repr",
                 )
 
     def test_binary_input_access_records(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_cli("records", input_file="data_pickle")
+            run_cli("records", input_="data_pickle")
 
         def format_exception_only(exc):
             if sys.version_info >= (3, 10):
@@ -2043,7 +2045,7 @@ Actual:
             | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
             | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
             """,
-            input_file="data_grades_simple_csv.csv",
+            input_="data_grades_simple_csv.csv",
             input_format="tsv",  # Make sure we can change the field separator from "\t" to ","
         )
 
@@ -2068,7 +2070,7 @@ Actual:
             | 0         |
             | 0         |
             """,
-            input_file="data_onerow.csv",
+            input_="data_onerow.csv",
         )
 
     def test_set_parser_json(self):
@@ -2085,7 +2087,7 @@ Actual:
             | yellow  | #ff0  |
             | black   | #000  |
             """,
-            input_file="data_colors.json",
+            input_="data_colors.json",
         )
 
     def test_set_parser_record(self):
@@ -2282,7 +2284,7 @@ Actual:
                 self.assert_pyolin(
                     "json.loads(file)[0]",
                     expected,
-                    input_file="data_colors.json",
+                    input_="data_colors.json",
                     output_format=output_format,
                 )
 
@@ -2334,7 +2336,7 @@ Actual:
                 self.assert_pyolin(
                     "json.loads(file)",
                     expected,
-                    input_file="data_colors.json",
+                    input_="data_colors.json",
                     output_format=output_format,
                 )
 
@@ -2353,12 +2355,12 @@ Actual:
             | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              | Desert City | CO  | 00123  |
             """,
             # pylint:enable=line-too-long
-            input_file="data_addresses.csv",
+            input_="data_addresses.csv",
         )
 
     def test_non_table_json(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_cli("records", input_file="data_json_example.json")
+            run_cli("records", input_="data_json_example.json")
             self.assertEqual(
                 "TypeError: Input is not an array of objects",
                 str(context.exception.__cause__),
@@ -2368,7 +2370,7 @@ Actual:
         self.assert_pyolin(
             "jsonobj['glossary']['title']",
             "example glossary\n",
-            input_file="data_json_example.json",
+            input_="data_json_example.json",
         )
 
     def test_jsonobj_obj_output(self):
@@ -2383,7 +2385,7 @@ Actual:
                 ]
             }
             """,
-            input_file="data_json_example.json",
+            input_="data_json_example.json",
         )
 
     def test_3d_table(self):
@@ -2401,7 +2403,7 @@ Actual:
                 ]
             ]
             """,
-            input_file="data_json_example.json",
+            input_="data_json_example.json",
         )
 
     def test_multiline_json_prog(self):
@@ -2424,7 +2426,7 @@ Actual:
                 ]
             ]
             """,
-            input_file="data_json_example.json",
+            input_="data_json_example.json",
         )
 
     def test_json_with_undefined(self):
@@ -2435,7 +2437,7 @@ Actual:
                 "foo"
             ]
             """,
-            input_file="data_json_example.json",
+            input_="data_json_example.json",
             output_format="json",
         )
 

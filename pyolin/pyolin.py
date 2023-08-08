@@ -2,6 +2,7 @@
 
 import argparse
 import importlib
+import io
 import itertools
 import re
 import sys
@@ -20,6 +21,7 @@ from typing import (
     TypeVar,
     Union,
 )
+import typing
 from hashbang import command, Argument
 
 from .ioformat import PARSERS, PRINTERS, AbstractParser, Printer, create_parser, new_printer
@@ -36,12 +38,14 @@ from .parser import Prog
 
 
 @contextmanager
-def get_io(input_filename: Optional[str]) -> Generator[IO[Any], None, None]:
+def get_io(input_: Union[typing.BinaryIO, str, None]) -> Generator[IO[Any], None, None]:
     """Get the IO from the given input filename, or from stdin if `input_file`
     is None."""
-    if input_filename:
+    if isinstance(input_, io.BytesIO):
+        yield input_
+    elif input_:
         mode = "rb"
-        with open(input_filename, mode) as input_file:
+        with open(input_, mode) as input_file:
             yield input_file
     else:
         yield sys.stdin.buffer
@@ -118,7 +122,7 @@ class PyolinConfig:
 def _execute_internal(
     prog,
     *args,
-    input_: Optional[str] = None,
+    input_: Union[str, typing.BinaryIO, None] = None,
     field_separator: Optional[str]=None,
     record_separator="\n",
     input_format="auto",
@@ -131,14 +135,14 @@ def _execute_internal(
     except KeyError:
         raise ValueError(f'Unrecognized output format "{output_format}"') from None
 
-    def gen_records(input_file: Optional[str]):
+    def gen_records(input_file: Union[str, typing.BinaryIO, None]):
         parser = config._freeze_parser()
         with get_io(input_file) as io_stream:
             for i, record in enumerate(parser.records(io_stream)):
                 record.set_num(i)
                 yield record
 
-    def get_contents(input_file: Optional[str]) -> Union[str, bytes]:
+    def get_contents(input_file: Union[str, typing.BinaryIO, None]) -> Union[str, bytes]:
         parser = config._freeze_parser()
         with get_io(input_file) as io_stream:
             contents = io_stream.read()
@@ -240,7 +244,7 @@ def run(*args, **kwargs):
 def _command_line(
     prog,
     *_REMAINDER_,
-    input_=None,
+    input_:Union[str, typing.BinaryIO, None]=None,
     field_separator=None,
     record_separator="\n",
     input_format="auto",
