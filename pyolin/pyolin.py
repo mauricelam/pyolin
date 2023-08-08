@@ -41,12 +41,12 @@ from .parser import Prog
 def get_io(input_: Union[typing.BinaryIO, str, None]) -> Generator[IO[Any], None, None]:
     """Get the IO from the given input filename, or from stdin if `input_file`
     is None."""
-    if isinstance(input_, io.BytesIO):
-        yield input_
-    elif input_:
+    if isinstance(input_, str):
         mode = "rb"
         with open(input_, mode) as input_file:
             yield input_file
+    elif input_ is not None:
+        yield input_
     else:
         yield sys.stdin.buffer
 
