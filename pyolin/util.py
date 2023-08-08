@@ -20,6 +20,7 @@ from typing import (
     TypeVar,
     Union,
 )
+import typing
 
 
 def cache(func):
@@ -136,21 +137,10 @@ class ItemDict(dict):
     """
 
     def __getitem__(self, key):
-        value = dict.__getitem__(self, key)
+        value = super().__getitem__(key)
         if isinstance(value, Item):
             return value()
         return value
-
-    def __setitem__(self, key, value):
-        try:
-            oldval = super().__getitem__(key)
-            if isinstance(oldval, SettableItem):
-                oldval.set(value)
-                return
-        except KeyError:
-            pass
-        debug(f"dict setting {key}={value}")
-        return super().__setitem__(key, value)
 
     def __missing__(self, key):
         try:
@@ -173,37 +163,6 @@ class Item(Generic[I]):
         return self.func(*arg, **kwargs)
 
 
-class SettableItem(Item[I], metaclass=abc.ABCMeta):
-    """A settable item for use inside an ItemDict."""
-
-    @abc.abstractmethod
-    def set(self, value: I) -> None:
-        """Method to be called when the value of this item is set"""
-        raise NotImplementedError()
-
-
-class BoxedItem(SettableItem[I]):
-    """A SettableItem that just stores its value in a field, and can be frozen."""
-
-    def __init__(self, func: Callable[..., I]):
-        super().__init__(func)
-        self.value = None
-        self.frozen = False
-
-    def set(self, value: I) -> None:
-        debug("setting boxed value ", value)
-        if self.frozen:
-            raise RuntimeError("Cannot set parser after it has been used")
-        self.value = value
-
-    def __call__(self, *args, **kwargs) -> I:
-        assert not args and not kwargs
-        if self.value is not None:
-            return self.value
-        self.value = super().__call__()
-        return self.value
-
-
 class LazyItem(Item[I]):
     """
     Item for ItemDict that is evaluated on demand.
@@ -220,13 +179,13 @@ class LazyItem(Item[I]):
         self._cached = False
         self._on_accessed = on_accessed
 
-    def __call__(self, *arg, **kwargs):
+    def __call__(self, *arg, **kwargs) -> I:
         if not self._cached:
             self._val = super().__call__(*arg, **kwargs)
             if self._on_accessed:
                 self._on_accessed()
             self._cached = True
-        return self._val
+        return typing.cast(I, self._val)
 
 
 def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:

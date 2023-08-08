@@ -1,3 +1,5 @@
+"""Main entry point for Pyolin, the utility to easily write Python one-liners."""
+
 import argparse
 import importlib
 import itertools
@@ -14,13 +16,14 @@ from typing import (
     Generic,
     Iterable,
     Optional,
+    Tuple,
     TypeVar,
     Union,
 )
 from hashbang import command, Argument
 
+from .ioformat import PARSERS, PRINTERS, AbstractParser, Printer, create_parser, new_printer
 from .util import (
-    BoxedItem,
     LazyItem,
     Item,
     ItemDict,
@@ -28,17 +31,18 @@ from .util import (
     _UNDEFINED_,
     NoMoreRecords,
 )
-from .ioformat import *
-from .record import RecordSequence
+from .record import Header, RecordSequence
 from .parser import Prog
 
 
 @contextmanager
-def get_io(input_file: Optional[str]) -> Generator[IO[Any], None, None]:
-    if input_file:
+def get_io(input_filename: Optional[str]) -> Generator[IO[Any], None, None]:
+    """Get the IO from the given input filename, or from stdin if `input_file`
+    is None."""
+    if input_filename:
         mode = "rb"
-        with open(input_file, mode) as f:
-            yield f
+        with open(input_filename, mode) as input_file:
+            yield input_file
     else:
         yield sys.stdin.buffer
 
@@ -47,6 +51,8 @@ I = TypeVar("I")
 
 
 class RecordScoped(LazyItem, Generic[I]):
+    """An Item in the global scope that is record scoped, which will cause the
+    program to be executed multiple times until the input is exhausted."""
     _on_accessed: Callable[[], None]
 
     def __init__(self, generator: RecordSequence, *, on_accessed: Callable[[], None]):
@@ -74,47 +80,81 @@ class RecordScoped(LazyItem, Generic[I]):
             raise NoMoreRecords() from exc
 
 
+class PyolinConfig:
+    _parser: Optional[AbstractParser] = None
+    _parser_frozen: bool = False
+    header: Optional[Header] = None
+
+    def __init__(self, printer: Printer, record_separator: str, field_separator: Optional[str], input_format: str):
+        self.printer = printer
+        self._record_separator = record_separator
+        self._field_separator = field_separator
+        self._input_format = input_format
+
+    @property
+    def parser(self) -> AbstractParser:
+        if not self._parser:
+            self._parser = self.new_parser(self._input_format)
+        return self._parser
+
+    @parser.setter
+    def parser(self, value):
+        if self._parser_frozen:
+            raise RuntimeError('Parsing already started, cannot set parser')
+        if isinstance(value, str):
+            self._parser = self.new_parser(value)
+        elif isinstance(value, AbstractParser):
+            self._parser = value
+        else:
+            raise TypeError(f'Expect `parser` to be an `AbstractParser`. Found `{value.__class__}` instead')
+
+    def new_parser(self, format: str) -> AbstractParser:
+        return create_parser(format, self._record_separator, self._field_separator)
+
+    def _freeze_parser(self) -> AbstractParser:
+        self._parser_frozen = True
+        return self.parser
+
 def _execute_internal(
     prog,
     *args,
     input_: Optional[str] = None,
-    field_separator=None,
+    field_separator: Optional[str]=None,
     record_separator="\n",
     input_format="auto",
     output_format="auto",
-):
+) -> Tuple[Any, PyolinConfig]:
     prog = Prog(prog)
 
-    def new_parser(input_format):
-        return create_parser(input_format, record_separator, field_separator)
-
-    parser_box = BoxedItem(lambda: new_parser(input_format))
+    try:
+        config = PyolinConfig(new_printer(output_format), record_separator, field_separator, input_format)
+    except KeyError:
+        raise ValueError(f'Unrecognized output format "{output_format}"') from None
 
     def gen_records(input_file: Optional[str]):
-        parser_box.frozen = True
-        parser = parser_box()
+        parser = config._freeze_parser()
         with get_io(input_file) as io_stream:
             for i, record in enumerate(parser.records(io_stream)):
                 record.set_num(i)
                 yield record
 
     def get_contents(input_file: Optional[str]) -> Union[str, bytes]:
-        parser_box.frozen = True
+        parser = config._freeze_parser()
         with get_io(input_file) as io_stream:
             contents = io_stream.read()
             try:
                 return contents.decode("utf-8")
-            except Exception:
+            except UnicodeDecodeError:
                 return contents
 
     record_seq = RecordSequence(gen_records(input_))
 
     def get_dataframe():
-        import pandas as pd
+        import pandas as pd  # pylint:disable=import-outside-toplevel
 
         header = [f.str for f in record_seq.header] if record_seq.header else None
-        df = pd.DataFrame(record_seq, columns=header)
-        return df.apply(pd.to_numeric, errors="ignore")  # type: ignore
+        dataframe = pd.DataFrame(record_seq, columns=header)
+        return dataframe.apply(pd.to_numeric, errors="ignore")  # type: ignore
 
     scope = "undecided"
 
@@ -130,11 +170,7 @@ def _execute_internal(
         return LazyItem(func, on_accessed=lambda: set_scope("table"))
 
     record_var = RecordScoped(record_seq, on_accessed=lambda: set_scope("record"))
-    try:
-        printer = new_printer(output_format)
-    except KeyError:
-        # pylint:disable=raise-missing-from
-        raise ValueError(f'Unrecognized output format "{output_format}"')
+
     global_dict = ItemDict(
         {
             # Record scoped
@@ -152,17 +188,13 @@ def _execute_internal(
             "filename": input_,
             "_UNDEFINED_": _UNDEFINED_,
             "new_printer": new_printer,
-            "new_parser": new_parser,
+            "new_parser": config.new_parser,
             # Modules
-            "re": re,
             "pd": Item(lambda: importlib.import_module("pandas")),
             "np": Item(lambda: importlib.import_module("numpy")),
-            "csv": Item(lambda: importlib.import_module("csv")),
             "pyolin": Item(lambda: importlib.import_module("pyolin")),
-            # Writeable
-            "printer": printer,
-            "parser": parser_box,
-            "header": None,
+            # Config (which contains writable attributes)
+            "cfg": config,
         }
     )
 
@@ -172,14 +204,14 @@ def _execute_internal(
     try:
         result = prog.exec(global_dict)
     except NoMoreRecords:
-        return _UNDEFINED_, global_dict
+        return _UNDEFINED_, config
 
     if scope == "record":
         result = itertools.chain(
             (result,), (prog.exec(global_dict) for _ in record_var)
         )
 
-    return result, global_dict
+    return result, config
 
 
 def run(*args, **kwargs):
@@ -253,7 +285,7 @@ def _command_line(
         re – The regex module.
         pd – The pandas module, if installed.
     """
-    result, global_dict = _execute_internal(
+    result, config = _execute_internal(
         prog,
         *_REMAINDER_,
         input_=input_,
@@ -262,9 +294,9 @@ def _command_line(
         input_format=input_format,
         output_format=output_format,
     )
-    printer = global_dict["printer"]
+    printer = config.printer
     if not isinstance(printer, Printer):
         raise RuntimeError(
             f'printer must be an instance of Printer. Found "{printer!r}" instead'
         )
-    global_dict["printer"].print_result(result, header=global_dict.get("header"))
+    printer.print_result(result, header=config.header)

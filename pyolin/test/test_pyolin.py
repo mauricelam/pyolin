@@ -27,7 +27,9 @@ def _test_file(file):
 
 def run_cli(prog, *, input_file="data_nba.txt", extra_args=(), **kwargs):
     with run_capturing_output(errmsg=f"Prog: {prog}") as output:
+        # pylint:disable=protected-access
         pyolin._command_line(prog, *extra_args, input_=_test_file(input_file), **kwargs)
+        # pylint:enable=protected-access
         return output
 
 
@@ -168,7 +170,7 @@ Actual:
 
     def test_awk_output_format_field_separator(self):
         self.assert_pyolin(
-            'printer.field_separator = ","; fields',
+            'cfg.printer.field_separator = ","; fields',
             """\
             Bucks,Milwaukee,60,22,0.732
             Raptors,Toronto,58,24,0.707
@@ -181,7 +183,7 @@ Actual:
 
     def test_awk_output_format_record_separator(self):
         self.assert_pyolin(
-            'printer.record_separator = ";\\n"; fields',
+            'cfg.printer.record_separator = ";\\n"; fields',
             """\
             Bucks Milwaukee 60 22 0.732;
             Raptors Toronto 58 24 0.707;
@@ -534,7 +536,7 @@ Actual:
 
     def test_add_header(self):
         self.assert_pyolin(
-            'header = ("Team", "City", "Win", "Loss", "Winrate"); records',
+            'cfg.header = ("Team", "City", "Win", "Loss", "Winrate"); records',
             """\
             | Team    | City         | Win | Loss | Winrate |
             | ------- | ------------ | --- | ---- | ------- |
@@ -579,7 +581,7 @@ Actual:
 
     def test_streaming_stdin(self):
         with pyolin_popen(
-            "parser.has_header = False; line",
+            "cfg.parser.has_header = False; line",
             extra_args=["--input_format=awk", "--output_format=awk"],
         ) as proc:
             assert proc.stdin and proc.stdout
@@ -598,7 +600,7 @@ Actual:
 
     def test_closed_stdout(self):
         with pyolin_popen(
-            "parser.has_header = False; line",
+            "cfg.parser.has_header = False; line",
             extra_args=["--input_format=awk", "--output_format=awk"],
         ) as proc:
             assert proc.stdin and proc.stdout and proc.stderr
@@ -628,7 +630,7 @@ Actual:
 
     def test_streaming_slice(self):
         with pyolin_popen(
-            "parser.has_header = False; records[:2]",
+            "cfg.parser.has_header = False; records[:2]",
             extra_args=["--input_format=awk", "--output_format=awk"],
         ) as proc:
             assert proc.stdin and proc.stdout
@@ -644,7 +646,7 @@ Actual:
 
     def test_streaming_index(self):
         with pyolin_popen(
-            "parser.has_header = False; records[1].str",
+            "cfg.parser.has_header = False; records[1].str",
             extra_args=["--input_format=awk", "--output_format=awk"],
         ) as proc:
             assert proc.stdin and proc.stdout
@@ -659,7 +661,7 @@ Actual:
 
     def test_streaming_index_with_auto_parser(self):
         with pyolin_popen(
-            "parser.has_header = False; records[1].str",
+            "cfg.parser.has_header = False; records[1].str",
             extra_args=["--output_format=awk"],
         ) as proc:
             assert proc.stdin and proc.stdout
@@ -700,7 +702,7 @@ Actual:
 
     def test_percentage(self):
         self.assert_pyolin(
-            "(r[0], round(r[3] / sum(r[3] for r in records), 2)) " "for r in records",
+            "(r[0], round(r[3] / sum(r[3] for r in records), 2)) for r in records",
             """\
             | 0       | 1    |
             | ------- | ---- |
@@ -1064,7 +1066,7 @@ Actual:
 
     def test_record_separator_multiple_chars(self):
         self.assert_pyolin(
-            "parser.has_header=False; record",
+            "cfg.parser.has_header=False; record",
             """\
             | value    |
             | -------- |
@@ -1295,7 +1297,7 @@ Actual:
 
     def test_force_has_header(self):
         self.assert_pyolin(
-            "parser.has_header = True; (r[0], r[2], r[7]) for r in records",
+            "cfg.parser.has_header = True; (r[0], r[2], r[7]) for r in records",
             """\
             | Alfalfa   | 123-45-6789 | 49.0 |
             | --------- | ----------- | ---- |
@@ -1362,7 +1364,7 @@ Actual:
             run_cli("a = record[0]; b = records; b")
         self.assertEqual(
             "Cannot access both record scoped and table scoped variables",
-            str(context.exception.__cause__.__cause__),
+            str(context.exception.__cause__.__cause__),  # type: ignore
         )
 
     def test_access_table_and_record(self):
@@ -1370,7 +1372,7 @@ Actual:
             run_cli("a = records; b = record[0]; b")
         self.assertEqual(
             "Cannot access both record scoped and table scoped variables",
-            str(context.exception.__cause__.__cause__),
+            str(context.exception.__cause__.__cause__),  # type: ignore
         )
 
     def test_empty_record_scoped(self):
@@ -1416,7 +1418,7 @@ Actual:
 
     def test_csv_output_format_unix(self):
         self.assert_pyolin(
-            "printer.dialect = csv.unix_dialect; records",
+            "cfg.printer.dialect = csv.unix_dialect; records",
             """\
             "Bucks","Milwaukee","60","22","0.732"
             "Raptors","Toronto","58","24","0.707"
@@ -1429,12 +1431,12 @@ Actual:
 
     def test_csv_output_invalid_dialect(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_cli('printer.dialect = "invalid"; records', output_format="csv")
+            run_cli('cfg.printer.dialect = "invalid"; records', output_format="csv")
         self.assertEqual('Unknown dialect "invalid"', str(context.exception.__cause__))
 
     def test_csv_output_format_delimiter(self):
         self.assert_pyolin(
-            'printer.delimiter = "^"; records',
+            'cfg.printer.delimiter = "^"; records',
             """\
             Bucks^Milwaukee^60^22^0.732\r
             Raptors^Toronto^58^24^0.707\r
@@ -1476,7 +1478,7 @@ Actual:
 
     def test_csv_output_with_header(self):
         self.assert_pyolin(
-            'printer.print_header = True; df[["Last name", "SSN", "Final"]]',
+            'cfg.printer.print_header = True; df[["Last name", "SSN", "Final"]]',
             """\
             Last name,SSN,Final\r
             Alfalfa,123-45-6789,49\r
@@ -1495,7 +1497,7 @@ Actual:
     def test_csv_output_with_header_function(self):
         def func():
             # pylint: disable=undefined-variable
-            printer.print_header = True  # type: ignore
+            cfg.printer.print_header = True  # type: ignore
             return df[["Last name", "SSN", "Final"]]  # type: ignore
             # pylint: enable=undefined-variable
 
@@ -1518,7 +1520,7 @@ Actual:
 
     def test_streaming_stdin_csv(self):
         with pyolin_popen(
-            "parser.has_header = False; record",
+            "cfg.parser.has_header = False; record",
             ["--output_format", "csv", "--input_format", "awk"],
         ) as proc:
             assert proc.stdin and proc.stdout
@@ -1535,7 +1537,7 @@ Actual:
 
     def test_numeric_header(self):
         self.assert_pyolin(
-            "printer.print_header = True; record[0],record[2],record[7]",
+            "cfg.printer.print_header = True; record[0],record[2],record[7]",
             """\
             0,1,2\r
             Alfalfa,123-45-6789,49.0\r
@@ -1705,7 +1707,7 @@ Actual:
 
     def test_json_output_with_manual_header(self):
         self.assert_pyolin(
-            "header = ['team', 'city', 'wins', 'loss', 'Win rate']; records[0]",
+            "cfg.header = ['team', 'city', 'wins', 'loss', 'Win rate']; records[0]",
             """\
             {
                 "team": "Bucks",
@@ -1848,9 +1850,11 @@ Actual:
     def test_repr_printer_table(self):
         self.assert_pyolin(
             "records",
+            # pylint:disable=line-too-long
             """\
             [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
             """,
+            # pylint:enable=line-too-long
             output_format="repr",
         )
 
@@ -1887,7 +1891,7 @@ Actual:
 
     def test_set_printer(self):
         self.assert_pyolin(
-            'printer = new_printer("repr"); range(10)',
+            'cfg.printer = new_printer("repr"); range(10)',
             """\
             range(0, 10)
             """,
@@ -1895,7 +1899,7 @@ Actual:
 
     def test_printer_none(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_cli("printer = None; 123")
+            run_cli("cfg.printer = None; 123")
         self.assertEqual(
             'printer must be an instance of Printer. Found "None" instead',
             str(context.exception.__cause__),
@@ -2013,7 +2017,9 @@ Actual:
 
         def format_exception_only(exc):
             if sys.version_info >= (3, 10):
-                return traceback.format_exception_only(exc)  # type: ignore
+                return traceback.format_exception_only(
+                    exc
+                )  # pylint:disable=no-value-for-parameter
             else:
                 return traceback.format_exception_only(type(exc), exc)  # type: ignore
 
@@ -2025,7 +2031,7 @@ Actual:
 
     def test_set_field_separator(self):
         self.assert_pyolin(
-            'parser.field_separator = ","; record',
+            'cfg.parser.field_separator = ","; record',
             """\
             | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
             | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
@@ -2038,11 +2044,12 @@ Actual:
             | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
             """,
             input_file="data_grades_simple_csv.csv",
+            input_format="tsv",  # Make sure we can change the field separator from "\t" to ","
         )
 
     def test_set_record_separator(self):
         self.assert_pyolin(
-            'parser.record_separator = ","; record',
+            'cfg.parser.record_separator = ","; record',
             """\
             | value     |
             | --------- |
@@ -2064,9 +2071,9 @@ Actual:
             input_file="data_onerow.csv",
         )
 
-    def test_set_parser(self):
+    def test_set_parser_json(self):
         self.assert_pyolin(
-            'parser = new_parser("json"); df',
+            'cfg.parser = new_parser("json"); df',
             """\
             | color   | value |
             | ------- | ----- |
@@ -2083,10 +2090,10 @@ Actual:
 
     def test_set_parser_record(self):
         with self.assertRaises(ErrorWithStderr) as context:
-            run_cli("a = records[0]; parser = 123; 123")
+            run_cli("a = records[0]; cfg.parser = 123; cfg.header = (); 123")
         self.assertEqual(
-            "Cannot set parser after it has been used",
-            str(context.exception.__cause__.__cause__),
+            "Parsing already started, cannot set parser",
+            str(context.exception.__cause__.__cause__),  # type: ignore
         )
 
     def test_records_if_undefined(self):
@@ -2121,12 +2128,13 @@ Actual:
             run_cli("idontknowwhatisthis + 1")
         self.assertEqual(
             "name 'idontknowwhatisthis' is not defined",
-            str(context.exception.__cause__.__cause__),
+            str(context.exception.__cause__.__cause__),  # type: ignore
         )
 
     def test_record_first(self):
         self.assert_pyolin(
-            'if record.first: mysum = 0; header = ("sum", "value")\n'
+            "global mysum\n"
+            'if record.first: mysum = 0; cfg.header = ("sum", "value")\n'
             "mysum += record[2]\n"
             "mysum, record[2]",
             """\
@@ -2142,7 +2150,7 @@ Actual:
 
     def test_record_num(self):
         self.assert_pyolin(
-            'record.num',
+            "record.num",
             """\
             | value |
             | ----- |
@@ -2208,7 +2216,9 @@ Actual:
         Double semi-colon is treated as a newline
         """
         self.assert_pyolin(
-            "if record.first: sum = 0;; sum += record[2]; sum, record[2]",
+            # Alternative, record-scoped way to write
+            #   sum = 0; ((sum, record[2]) for record in records)
+            "global sum;; if record.first: sum = 0;; sum += record[2]; sum, record[2]",
             """\
             | 0   | 1  |
             | --- | -- |
@@ -2396,10 +2406,12 @@ Actual:
 
     def test_multiline_json_prog(self):
         self.assert_pyolin(
-            textwrap.dedent("""\
+            textwrap.dedent(
+                """\
             [
                 ['foo', ['a', 'b']], ['bar', ['c', 'd']]
-            ]"""),
+            ]"""
+            ),
             """\
             [
                 [
@@ -2424,7 +2436,7 @@ Actual:
             ]
             """,
             input_file="data_json_example.json",
-            output_format="json"
+            output_format="json",
         )
 
     def test_records_negative_index(self):

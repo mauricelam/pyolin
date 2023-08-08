@@ -406,8 +406,8 @@ PARSERS = {
 
 
 def create_parser(
-    input_format: str, record_separator: str, field_separator: str
-) -> Callable[[], AbstractParser]:
+    input_format: str, record_separator: str, field_separator: Optional[str]
+) -> AbstractParser:
     """Creates a parser from the given `input_format`."""
     try:
         return PARSERS[input_format](record_separator, field_separator)
