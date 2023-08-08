@@ -2031,7 +2031,7 @@ Actual:
 
     def test_set_field_separator(self):
         self.assert_pyolin(
-            'parser.field_separator = ","; record',
+            'cfg.parser.field_separator = ","; record',
             """\
             | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
             | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
@@ -2044,6 +2044,7 @@ Actual:
             | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
             """,
             input_file="data_grades_simple_csv.csv",
+            input_format="tsv",  # Make sure we can change the field separator from "\t" to ","
         )
 
     def test_set_record_separator(self):
