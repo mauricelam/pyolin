@@ -6,12 +6,12 @@
 
 import os
 from pprint import pformat
+import random
 import textwrap
 from unittest import mock
 
 import pytest
 from pyolin import pyolin
-
 from pyolin.parser import UserError
 from pyolin.util import _UNDEFINED_
 
@@ -143,7 +143,7 @@ def test_conditional(pyolin):
 
 def test_number_conversion(pyolin):
     assert (
-        pyolin("record.str for record in records if record[2] > 50")
+        pyolin("record.source for record in records if record[2] > 50")
         == """\
         | value                          |
         | ------------------------------ |
@@ -696,7 +696,7 @@ def test_module_import(pyolin):
 
 def test_record_variables(pyolin):
     assert (
-        pyolin("type(record).__name__, type(line).__name__, type(fields).__name__")
+        pyolin("type(record).__name__, type(line.str).__name__, type(fields).__name__")
         == """\
         | 0      | 1   | 2      |
         | ------ | --- | ------ |
@@ -716,7 +716,7 @@ def test_file_variables(pyolin):
             "type(file).__name__, type(contents).__name__"
         )
         == """\
-        StreamingSequence RecordSequence str str
+        StreamingSequence RecordSequence DeferredType DeferredType
         """
     )
 
@@ -733,9 +733,10 @@ def test_boolean(pyolin):
 
 
 def test_awk_header_detection(pyolin):
-    assert (
-        pyolin("record if record[1].bool", input_=File("data_files_with_header.txt"))
-        == """\
+    assert pyolin(
+        "record if record[1].bool", input_=File("data_files_with_header.txt")
+    ) == (
+        """\
         | Path       | IsDir | Size | Score |
         | ---------- | ----- | ---- | ----- |
         | dir        | True  | 30   | 40.0  |
@@ -799,24 +800,9 @@ def test_in_operator(pyolin):
     )
 
 
-def test_base64(pyolin):
-    assert pyolin("base64.b64encode(fields[0].bytes)") == (
-        """\
-        | value        |
-        | ------------ |
-        | QnVja3M=     |
-        | UmFwdG9ycw== |
-        | NzZlcnM=     |
-        | Q2VsdGljcw== |
-        | UGFjZXJz     |
-        """
-    )
-
-
 def test_url_quote(pyolin):
-    assert (
-        pyolin("urllib.parse.quote(line)")
-        == """\
+    assert pyolin("urllib.parse.quote(line.str)") == (
+        """\
         | value                                          |
         | ---------------------------------------------- |
         | Bucks%20Milwaukee%20%20%20%2060%2022%200.732   |
@@ -1561,7 +1547,7 @@ def test_csv_output_with_header_function(pyolin):
 def test_streaming_stdin_csv(pyolin):
     with pyolin.popen(
         "cfg.parser.has_header = False; record",
-        extra_args = ["--output_format", "csv", "--input_format", "awk"],
+        extra_args=["--output_format", "csv", "--input_format", "awk"],
     ) as proc:
         assert proc.stdin and proc.stdout
         proc.stdin.write("Raptors Toronto    58 24 0.707\n")
@@ -2013,18 +1999,28 @@ def test_binary_input_len(pyolin):
     assert pyolin("len(file)", input_=File("data_pickle")) == "21\n"
 
 
+def test_binary_input_len_non_unicode(pyolin):
+    with pytest.raises(ErrorWithStderr) as exc:
+        pyolin("len(file)", input_=b"\x00\xff\x03")
+    assert "Cannot get length of str containing non-UTF8" in str(exc.value.__cause__)
+
+
+def test_binary_input_len_bytes_non_unicode(pyolin):
+    assert pyolin("len(file.bytes)", input_=b"\x00\xff\x03") == "3\n"
+
+
 def test_binary_input_can_be_accessed(pyolin):
     assert (
         pyolin("type(file).__name__", input_=File("data_pickle"))
         == """\
-        bytes
+        DeferredType
         """
     )
 
 
 def test_binary_input_pickle(pyolin):
     assert (
-        pyolin("pickle.loads(file)", input_=File("data_pickle"))
+        pyolin("pickle.loads(file.bytes)", input_=File("data_pickle"))
         == """\
         hello world
         """
@@ -2032,10 +2028,13 @@ def test_binary_input_pickle(pyolin):
 
 
 def test_binary_printer(pyolin):
-    assert pyolin(
-        'b"\\x30\\x62\\x43\\x00"',
-        output_format="binary",
-    ) == b"\x30\x62\x43\x00"
+    assert (
+        pyolin(
+            'b"\\x30\\x62\\x43\\x00"',
+            output_format="binary",
+        )
+        == b"\x30\x62\x43\x00"
+    )
 
 
 @pytest.mark.parametrize(

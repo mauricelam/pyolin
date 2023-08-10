@@ -159,4 +159,13 @@ def run_capturing_output(*, errmsg: Optional[str] = None):
 
 def pytest_assertrepr_compare(op, left, right):
     if isinstance(left, TextIO) or isinstance(right, TextIO) and op == "==":
-        assert str(left) == str(right)
+        if str(left) != str(right):
+            return [
+                "",
+                "=== Actual ===",
+                *str(left).split('\n'),
+                "===",
+                "=== Expected ===",
+                *str(right).split('\n'),
+                "===",
+            ]

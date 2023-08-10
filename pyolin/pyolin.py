@@ -24,6 +24,8 @@ from typing import (
 import typing
 from hashbang import command, Argument
 
+from pyolin.field import DeferredType
+
 from .ioformat import PARSERS, PRINTERS, AbstractParser, Printer, create_parser, new_printer
 from .util import (
     LazyItem,
@@ -38,7 +40,7 @@ from .parser import Prog
 
 
 @contextmanager
-def get_io(input_: Union[typing.BinaryIO, str, None]) -> Generator[IO[Any], None, None]:
+def get_io(input_: Union[typing.BinaryIO, str, None]) -> Generator[typing.BinaryIO, None, None]:
     """Get the IO from the given input filename, or from stdin if `input_file`
     is None."""
     if isinstance(input_, str):
@@ -142,14 +144,10 @@ def _execute_internal(
                 record.set_num(i)
                 yield record
 
-    def get_contents(input_file: Union[str, typing.BinaryIO, None]) -> Union[str, bytes]:
-        parser = config._freeze_parser()
+    def get_contents(input_file: Union[str, typing.BinaryIO, None]) -> DeferredType:
+        config._freeze_parser()
         with get_io(input_file) as io_stream:
-            contents = io_stream.read()
-            try:
-                return contents.decode("utf-8")
-            except UnicodeDecodeError:
-                return contents
+            return DeferredType(io_stream.read())
 
     record_seq = RecordSequence(gen_records(input_))
 
@@ -180,9 +178,9 @@ def _execute_internal(
             # Record scoped
             "record": record_var,
             "fields": record_var,
-            "line": Item(lambda: record_var().str),
+            "line": Item(lambda: record_var().source),
             # Table scoped
-            "lines": table_scoped(lambda: StreamingSequence(r.str for r in record_seq)),
+            "lines": table_scoped(lambda: StreamingSequence(r.source for r in record_seq)),
             "records": table_scoped(lambda: record_seq),
             "file": table_scoped(lambda: get_contents(input_)),
             "contents": table_scoped(lambda: get_contents(input_)),

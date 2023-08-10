@@ -1,16 +1,39 @@
-from typing import Any, Iterable, Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 
 Number = Union[int, float]
 Boolean = bool
 
 
-class Field(str):
-    def __new__(cls, content, *, header: Optional[Iterable[str]]):
+class DeferredType(str):
+    """A string that defers typing itself to wait for more information based on
+    the operations performed on it. This type will try to coerce itself into
+    numeric types when multiplication is requested, for example.
+
+    In order to explicitly type this, use `.int`, `.bool`, `.str`, or
+    `.bytes`."""
+
+    def __new__(cls, content: Union['DeferredType', str, bytes]):
+        if isinstance(content, DeferredType):
+            return content
+        elif isinstance(content, (bytes, bytearray)):
+            return super().__new__(cls, content.decode("utf-8", errors="replace"))
         return super().__new__(cls, content)
 
-    def __init__(self, content, *, header: Optional[Iterable[str]]):
-        self.header = header
+    def __init__(self, content: Union['DeferredType', str, bytes]):
+        if isinstance(content, DeferredType):
+            self.source = content.source
+            self.is_valid_str = content.is_valid_str
+        elif isinstance(content, str):
+            self.source = content
+            self.is_valid_str = True
+        else:
+            self.source = content
+            try:
+                content.decode("utf-8")
+                self.is_valid_str = True
+            except UnicodeDecodeError:
+                self.is_valid_str = False
 
     def _isnumber(self):
         try:
@@ -51,7 +74,7 @@ class Field(str):
         try:
             return self._coerce_assuming_numeric(other)
         except ValueError:
-            return super(), other
+            return self.str, other
 
     def _coerce_assuming_numeric(self, other):
         """
@@ -214,13 +237,22 @@ class Field(str):
         return self._coerce_to_number().__ceil__()
 
     def __bytes__(self):
-        return self.encode("utf-8")
+        return self.bytes
 
     def __hash__(self):
         return hash(str(self))
 
+    def __bool__(self):
+        return self.bool
+
+    def __len__(self):
+        if not self.is_valid_str:
+            raise TypeError('Cannot get length of str containing non-UTF8')
+        return super().__len__()
+
     @property
     def bool(self) -> bool:
+        """Converts this deferred type to a boolean."""
         if self.lower() in ("true", "t", "y", "yes", "1", "on"):
             return True
         elif self.lower() in ("false", "f", "n", "no", "0", "off"):
@@ -230,16 +262,33 @@ class Field(str):
 
     @property
     def int(self) -> int:
+        """Converts this deferred type to an int."""
         return int(self)
 
     @property
     def float(self) -> float:
+        """Converts this deferred type to a float."""
         return float(self)
 
     @property
     def str(self) -> str:
+        """Convers this deferred type to a string."""
         return str(self)
 
     @property
     def bytes(self) -> bytes:
-        return bytes(self)
+        """Converts the data to bytes"""
+        if isinstance(self.source, bytes):
+            return self.source
+        return super().encode("utf-8")
+
+
+class Field(DeferredType):
+    """Represents a field in a parsed input data table."""
+
+    def __new__(cls, content, *, header: Optional["Field"]):
+        return super().__new__(cls, content)
+
+    def __init__(self, content, *, header: Optional["Field"]):
+        super().__init__(content)
+        self.header = header
