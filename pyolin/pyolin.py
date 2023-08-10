@@ -2,15 +2,12 @@
 
 import argparse
 import importlib
-import io
 import itertools
-import re
 import sys
 import json
 
 from contextlib import contextmanager
 from typing import (
-    IO,
     Any,
     Callable,
     Generator,
@@ -26,7 +23,14 @@ from hashbang import command, Argument
 
 from pyolin.field import DeferredType
 
-from .ioformat import PARSERS, PRINTERS, AbstractParser, Printer, create_parser, new_printer
+from .ioformat import (
+    PARSERS,
+    PRINTERS,
+    AbstractParser,
+    Printer,
+    create_parser,
+    new_printer,
+)
 from .util import (
     LazyItem,
     Item,
@@ -40,7 +44,9 @@ from .parser import Prog
 
 
 @contextmanager
-def get_io(input_: Union[typing.BinaryIO, str, None]) -> Generator[typing.BinaryIO, None, None]:
+def get_io(
+    input_: Union[typing.BinaryIO, str, None]
+) -> Generator[typing.BinaryIO, None, None]:
     """Get the IO from the given input filename, or from stdin if `input_file`
     is None."""
     if isinstance(input_, str):
@@ -53,12 +59,13 @@ def get_io(input_: Union[typing.BinaryIO, str, None]) -> Generator[typing.Binary
         yield sys.stdin.buffer
 
 
-I = TypeVar("I")
+T = TypeVar("T")
 
 
-class RecordScoped(LazyItem, Generic[I]):
+class RecordScoped(LazyItem, Generic[T]):
     """An Item in the global scope that is record scoped, which will cause the
     program to be executed multiple times until the input is exhausted."""
+
     _on_accessed: Callable[[], None]
 
     def __init__(self, generator: RecordSequence, *, on_accessed: Callable[[], None]):
@@ -87,11 +94,19 @@ class RecordScoped(LazyItem, Generic[I]):
 
 
 class PyolinConfig:
+    """Configuration of Pyolin, available to the Pyolin program as `cfg`."""
+
     _parser: Optional[AbstractParser] = None
     _parser_frozen: bool = False
     header: Optional[Header] = None
 
-    def __init__(self, printer: Printer, record_separator: str, field_separator: Optional[str], input_format: str):
+    def __init__(
+        self,
+        printer: Printer,
+        record_separator: str,
+        field_separator: Optional[str],
+        input_format: str,
+    ):
         self.printer = printer
         self._record_separator = record_separator
         self._field_separator = field_separator
@@ -99,6 +114,7 @@ class PyolinConfig:
 
     @property
     def parser(self) -> AbstractParser:
+        """The parser for parsing input files, if `records` or `record` is used."""
         if not self._parser:
             self._parser = self.new_parser(self._input_format)
         return self._parser
@@ -106,26 +122,40 @@ class PyolinConfig:
     @parser.setter
     def parser(self, value):
         if self._parser_frozen:
-            raise RuntimeError('Parsing already started, cannot set parser')
+            raise RuntimeError("Parsing already started, cannot set parser")
         if isinstance(value, str):
             self._parser = self.new_parser(value)
         elif isinstance(value, AbstractParser):
             self._parser = value
         else:
-            raise TypeError(f'Expect `parser` to be an `AbstractParser`. Found `{value.__class__}` instead')
+            raise TypeError(
+                f"Expect `parser` to be an `AbstractParser`. Found `{value.__class__}` instead"
+            )
 
-    def new_parser(self, format: str) -> AbstractParser:
-        return create_parser(format, self._record_separator, self._field_separator)
+    def new_parser(
+        self,
+        parser_format: str,
+        *,
+        record_separator: Optional[str] = None,
+        field_separator: Optional[str] = None,
+    ) -> AbstractParser:
+        """Create a new parser based on the given format and the current configuration."""
+        return create_parser(
+            parser_format,
+            record_separator or self._record_separator,
+            field_separator or self._field_separator,
+        )
 
     def _freeze_parser(self) -> AbstractParser:
         self._parser_frozen = True
         return self.parser
 
+
 def _execute_internal(
     prog,
     *args,
     input_: Union[str, typing.BinaryIO, None] = None,
-    field_separator: Optional[str]=None,
+    field_separator: Optional[str] = None,
     record_separator="\n",
     input_format="auto",
     output_format="auto",
@@ -133,19 +163,21 @@ def _execute_internal(
     prog = Prog(prog)
 
     try:
-        config = PyolinConfig(new_printer(output_format), record_separator, field_separator, input_format)
+        config = PyolinConfig(
+            new_printer(output_format), record_separator, field_separator, input_format
+        )
     except KeyError:
         raise ValueError(f'Unrecognized output format "{output_format}"') from None
 
     def gen_records(input_file: Union[str, typing.BinaryIO, None]):
-        parser = config._freeze_parser()
+        parser = config._freeze_parser()  # pylint:disable=protected-access
         with get_io(input_file) as io_stream:
             for i, record in enumerate(parser.records(io_stream)):
                 record.set_num(i)
                 yield record
 
     def get_contents(input_file: Union[str, typing.BinaryIO, None]) -> DeferredType:
-        config._freeze_parser()
+        config._freeze_parser()  # pylint:disable=protected-access
         with get_io(input_file) as io_stream:
             return DeferredType(io_stream.read())
 
@@ -180,7 +212,9 @@ def _execute_internal(
             "fields": record_var,
             "line": Item(lambda: record_var().source),
             # Table scoped
-            "lines": table_scoped(lambda: StreamingSequence(r.source for r in record_seq)),
+            "lines": table_scoped(
+                lambda: StreamingSequence(r.source for r in record_seq)
+            ),
             "records": table_scoped(lambda: record_seq),
             "file": table_scoped(lambda: get_contents(input_)),
             "contents": table_scoped(lambda: get_contents(input_)),
@@ -242,7 +276,7 @@ def run(*args, **kwargs):
 def _command_line(
     prog,
     *_REMAINDER_,
-    input_:Union[str, typing.BinaryIO, None]=None,
+    input_: Union[str, typing.BinaryIO, None] = None,
     field_separator=None,
     record_separator="\n",
     input_format="auto",

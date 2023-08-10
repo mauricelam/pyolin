@@ -30,7 +30,7 @@ from typing import (
 
 
 from .json_encoder import CustomJsonEncoder
-from .record import Record, Header, HasHeader
+from .record import Field, Record, Header, HasHeader
 from .util import (
     _UNDEFINED_,
     clean_close_stdout_and_stderr,
@@ -39,7 +39,6 @@ from .util import (
     peek_iter,
     tee_if_iterable,
 )
-from .field import DeferredType, Field
 from . import header_detector
 
 __all__ = [

@@ -1,4 +1,5 @@
-from typing import Any, Optional, Tuple, Union
+import math
+from typing import Any, Tuple, Union
 
 
 Number = Union[int, float]
@@ -58,12 +59,11 @@ class DeferredType(str):
         "other" type, perform the coercion. Otherwise use the super
         implementation.
         """
-        if isinstance(other, Field) and self._isnumber() and other._isnumber():
+        if isinstance(other, DeferredType) and self._isnumber() and other._isnumber():
             return self._coerce_to_number(), other._coerce_to_number()
-        elif isinstance(other, (int, float)):
+        if isinstance(other, (int, float)):
             return self._coerce_to_number(), other
-        else:
-            return super(), other
+        return super(), other
 
     def _coerce_with_fallback(self, other: Any) -> Tuple[Union[Number, str], Any]:
         """
@@ -82,8 +82,8 @@ class DeferredType(str):
         successfully converted to numeric types. An exception will be thrown
         if the coercion failed.
         """
-        if isinstance(other, Field):
-            other = other._coerce_to_number()
+        if isinstance(other, DeferredType):
+            other = other._coerce_to_number()  # pylint:disable=protected-access
         return self._coerce_to_number(), other
 
     def __gt__(self, other):
@@ -231,10 +231,10 @@ class DeferredType(str):
         return self._coerce_to_number().__round__(*args)
 
     def __floor__(self):
-        return self._coerce_to_number().__floor__()
+        return math.floor(self._coerce_to_number())
 
     def __ceil__(self):
-        return self._coerce_to_number().__ceil__()
+        return math.ceil(self._coerce_to_number())
 
     def __bytes__(self):
         return self.bytes
@@ -255,10 +255,9 @@ class DeferredType(str):
         """Converts this deferred type to a boolean."""
         if self.lower() in ("true", "t", "y", "yes", "1", "on"):
             return True
-        elif self.lower() in ("false", "f", "n", "no", "0", "off"):
+        if self.lower() in ("false", "f", "n", "no", "0", "off"):
             return False
-        else:
-            raise ValueError(f'Cannot convert "{self}" to bool')
+        raise ValueError(f'Cannot convert "{self}" to bool')
 
     @property
     def int(self) -> int:
@@ -281,14 +280,3 @@ class DeferredType(str):
         if isinstance(self.source, bytes):
             return self.source
         return super().encode("utf-8")
-
-
-class Field(DeferredType):
-    """Represents a field in a parsed input data table."""
-
-    def __new__(cls, content, *, header: Optional["Field"]):
-        return super().__new__(cls, content)
-
-    def __init__(self, content, *, header: Optional["Field"]):
-        super().__init__(content)
-        self.header = header

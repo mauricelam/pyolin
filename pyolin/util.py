@@ -1,6 +1,5 @@
 """Utility functions."""
 
-import abc
 import collections.abc
 import functools
 import itertools
@@ -149,28 +148,28 @@ class ItemDict(dict):
             raise KeyError(key) from None
 
 
-I = TypeVar("I")
+T = TypeVar("T")
 
 
-class Item(Generic[I]):
+class Item(Generic[T]):
     """An Item that is defined by a function, which will be initialized when this item is used,
     typically from ItemDict."""
 
-    def __init__(self, func: Callable[..., I]):
+    def __init__(self, func: Callable[..., T]):
         self.func = func
 
-    def __call__(self, *arg, **kwargs) -> I:
+    def __call__(self, *arg, **kwargs) -> T:
         return self.func(*arg, **kwargs)
 
 
-class LazyItem(Item[I]):
+class LazyItem(Item[T]):
     """
     Item for ItemDict that is evaluated on demand.
     """
 
     def __init__(
         self,
-        func: Callable[..., I],
+        func: Callable[..., T],
         *,
         on_accessed: Optional[Callable[[], None]] = None,
     ):
@@ -179,13 +178,13 @@ class LazyItem(Item[I]):
         self._cached = False
         self._on_accessed = on_accessed
 
-    def __call__(self, *arg, **kwargs) -> I:
+    def __call__(self, *arg, **kwargs) -> T:
         if not self._cached:
             self._val = super().__call__(*arg, **kwargs)
             if self._on_accessed:
                 self._on_accessed()
             self._cached = True
-        return typing.cast(I, self._val)
+        return typing.cast(T, self._val)
 
 
 def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:

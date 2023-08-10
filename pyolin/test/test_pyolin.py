@@ -6,7 +6,6 @@
 
 import os
 from pprint import pformat
-import random
 import textwrap
 from unittest import mock
 
@@ -483,9 +482,10 @@ def test_and(pyolin):
 
 
 def test_add_header(pyolin):
-    assert (
-        pyolin('cfg.header = ("Team", "City", "Win", "Loss", "Winrate"); records')
-        == """\
+    assert pyolin(
+        'cfg.header = ("Team", "City", "Win", "Loss", "Winrate"); records'
+    ) == (
+        """\
         | Team    | City         | Win | Loss | Winrate |
         | ------- | ------------ | --- | ---- | ------- |
         | Bucks   | Milwaukee    | 60  | 22   | 0.732   |
@@ -558,8 +558,8 @@ def test_closed_stdout(pyolin):
         proc.stdin.flush()
         with timeout(2):
             assert proc.stdout.readline() == "Raptors Toronto    58 24 0.707\n"
-        # Command line tools like `head` will close the pipe when it is done getting the data
-        # it needs. Make sure this doesn't crash
+        # Command line tools like `head` will close the pipe when it is done
+        # getting the data it needs. Make sure this doesn't crash
         proc.stdout.close()
         proc.stdin.write("Celtics Boston     49 33 0.598\n")
         proc.stdin.close()
@@ -650,9 +650,10 @@ def test_destructuring(pyolin):
 
 
 def test_percentage(pyolin):
-    assert (
-        pyolin("(r[0], round(r[3] / sum(r[3] for r in records), 2)) for r in records")
-        == """\
+    assert pyolin(
+        "(r[0], round(r[3] / sum(r[3] for r in records), 2)) for r in records"
+    ) == (
+        """\
         | 0       | 1    |
         | ------- | ---- |
         | Bucks   | 0.15 |
@@ -695,9 +696,10 @@ def test_module_import(pyolin):
 
 
 def test_record_variables(pyolin):
-    assert (
-        pyolin("type(record).__name__, type(line.str).__name__, type(fields).__name__")
-        == """\
+    assert pyolin(
+        "type(record).__name__, type(line.str).__name__, type(fields).__name__"
+    ) == (
+        """\
         | 0      | 1   | 2      |
         | ------ | --- | ------ |
         | Record | str | Record |
@@ -962,13 +964,12 @@ def test_numpy_numeric_operations(pyolin):
 
 
 def test_field_separator(pyolin):
-    assert (
-        pyolin(
-            "record",
-            input_=File("data_grades_simple_csv.csv"),
-            field_separator=r",",
-        )
-        == """\
+    assert pyolin(
+        "record",
+        input_=File("data_grades_simple_csv.csv"),
+        field_separator=r",",
+    ) == (
+        """\
         | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
         | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
         | Alfalfa   | Aloysius   | 123-45-6789 | 40.0 | 90.0 | 100.0 | 83.0 | 49.0 | D- |
@@ -978,7 +979,7 @@ def test_field_separator(pyolin):
         | Franklin  | Benny      | 234-56-2890 | 50.0 | 1.0  | 90.0  | 80.0 | 90.0 | B- |
         | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
         | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
-        """
+        """  # noqa: E501
     )
 
 
@@ -989,7 +990,6 @@ def test_field_separator_regex(pyolin):
         field_separator=r"[\.,]",
         input_format="awk",
     ) == (
-        # pylint:disable=line-too-long
         """\
         | 0         | 1          | 2           | 3  | 4 | 5  | 6 | 7   | 8 | 9  | 10 | 11 | 12 | 13 |
         | --------- | ---------- | ----------- | -- | - | -- | - | --- | - | -- | -- | -- | -- | -- |
@@ -1000,8 +1000,7 @@ def test_field_separator_regex(pyolin):
         | Franklin  | Benny      | 234-56-2890 | 50 | 0 | 1  | 0 | 90  | 0 | 80 | 0  | 90 | 0  | B- |
         | George    | Boy        | 345-67-3901 | 40 | 0 | 1  | 0 | 11  | 0 | -1 | 0  | 4  | 0  | B  |
         | Heffalump | Harvey     | 632-79-9439 | 30 | 0 | 1  | 0 | 20  | 0 | 30 | 0  | 40 | 0  | C  |
-        """
-        # pylint:enable=line-too-long
+        """  # noqa: E501
     )
 
 
@@ -1292,13 +1291,12 @@ def test_header_detection(pyolin):
 
 
 def test_force_has_header(pyolin):
-    assert (
-        pyolin(
-            "cfg.parser.has_header = True; (r[0], r[2], r[7]) for r in records",
-            input_=File("data_grades_simple_csv.csv"),
-            input_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "cfg.parser.has_header = True; (r[0], r[2], r[7]) for r in records",
+        input_=File("data_grades_simple_csv.csv"),
+        input_format="csv",
+    ) == (
+        """\
         | Alfalfa   | 123-45-6789 | 49.0 |
         | --------- | ----------- | ---- |
         | Alfred    | 123-12-1234 | 48.0 |
@@ -1368,13 +1366,17 @@ def test_assign_to_record(pyolin):
 def test_access_record_and_table(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a = record[0]; b = records; b")
-    assert "Cannot access both record scoped and table scoped variables" == str(exc.value.__cause__.__cause__)  # type: ignore
+    assert "Cannot access both record scoped and table scoped variables" == str(
+        exc.value.__cause__.__cause__  # type: ignore
+    )
 
 
 def test_access_table_and_record(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a = records; b = record[0]; b")
-    assert "Cannot access both record scoped and table scoped variables" == str(exc.value.__cause__.__cause__)  # type: ignore
+    assert "Cannot access both record scoped and table scoped variables" in str(
+        exc.value.__cause__
+    )
 
 
 def test_empty_record_scoped(pyolin):
@@ -1519,10 +1521,8 @@ def test_csv_output_with_header(pyolin):
 
 def test_csv_output_with_header_function(pyolin):
     def func():
-        # pylint: disable=undefined-variable
-        cfg.printer.print_header = True  # type: ignore
-        return df[["Last name", "SSN", "Final"]]  # type: ignore
-        # pylint: enable=undefined-variable
+        cfg.printer.print_header = True  # type: ignore  # noqa: F821
+        return df[["Last name", "SSN", "Final"]]  # type: ignore  # noqa: F821
 
     assert (
         pyolin(
@@ -1919,14 +1919,10 @@ def test_repr_printer(pyolin):
 
 
 def test_repr_printer_table(pyolin):
-    assert pyolin(
-        "records",
-        output_format="repr",
-    ) == (  # pylint:disable=line-too-long
+    assert pyolin("records", output_format="repr") == (
         """\
         [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
-        """
-        # pylint:enable=line-too-long
+        """  # noqa: E501
     )
 
 
@@ -2184,7 +2180,7 @@ def test_set_parser_json(pyolin):
 def test_set_parser_record(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a = records[0]; cfg.parser = 123; cfg.header = (); 123")
-    assert "Parsing already started, cannot set parser" == str(exc.value.__cause__.__cause__)  # type: ignore
+    assert "Parsing already started, cannot set parser" in str(exc.value.__cause__)
 
 
 def test_records_if_undefined(pyolin):
@@ -2224,7 +2220,7 @@ def test_undefined(pyolin, output_format, expected):
 def test_name_error(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("idontknowwhatisthis + 1")
-    assert "name 'idontknowwhatisthis' is not defined" == str(exc.value.__cause__.__cause__)  # type: ignore
+    assert "name 'idontknowwhatisthis' is not defined" in str(exc.value.__cause__)
 
 
 def test_record_first(pyolin):
@@ -2279,9 +2275,7 @@ def test_trailing_newline(pyolin):
 
 def test_execute_function(input_file_nba):
     def get_records():
-        # pylint: disable=undefined-variable
-        return records  # type: ignore
-        # pylint: enable=undefined-variable
+        return records  # type: ignore  # noqa: F821
 
     assert pyolin.run(get_records, input_=input_file_nba.path()) == [
         ("Bucks", "Milwaukee", 60, 22, 0.732),
@@ -2294,9 +2288,7 @@ def test_execute_function(input_file_nba):
 
 def test_execute_function_record_scoped(input_file_nba):
     def get_records():
-        # pylint: disable=undefined-variable
-        return record[0]  # type: ignore
-        # pylint: enable=undefined-variable
+        return record[0]  # type: ignore  # noqa: F821
 
     assert pyolin.run(get_records, input_=input_file_nba.path()) == [
         "Bucks",
@@ -2478,7 +2470,6 @@ def test_manual_load_csv(pyolin):
         "csv.reader(io.StringIO(file))",
         input_=File("data_addresses.csv"),
     ) == (
-        # pylint:disable=line-too-long
         """\
         | 0                     | 1        | 2                                | 3           | 4   | 5      |
         | --------------------- | -------- | -------------------------------- | ----------- | --- | ------ |
@@ -2488,8 +2479,7 @@ def test_manual_load_csv(pyolin):
         | Stephen               | Tyler    | 7452 Terrace "At the Plaza" road | SomeTown    | SD  |  91234 |
         |                       | Blankman |                                  | SomeTown    |  SD |  00298 |
         | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              | Desert City | CO  | 00123  |
-        """
-        # pylint:enable=line-too-long
+        """  # noqa: E501
     )
 
 

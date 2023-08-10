@@ -1,5 +1,7 @@
+"""Detects whether a header is present in a table."""
+
 import itertools
-from typing import Iterator, List, Optional, Type, Union
+from typing import Iterator, List, Type, Union
 
 from .record import Record
 from .util import debug
@@ -50,20 +52,20 @@ def has_header(stream: Iterator[Record]) -> bool:
     debug("column types", column_types)
     # finally, compare results against first row and "vote"
     # on whether it's a header
-    has_header = 0
+    has_header_score = 0
     for col, col_type in enumerate(column_types):
         if isinstance(col_type, int):  # it's a length
             if len(header[col].str) != col_type:
-                has_header += 1
+                has_header_score += 1
             else:
-                has_header -= 1
+                has_header_score -= 1
         elif col_type != "Disqualified" and col_type is not None:  # attempt typecast
             try:
                 col_type(header[col].str)
             except (ValueError, TypeError):
-                has_header += 1
+                has_header_score += 1
             else:
-                has_header -= 1
-    debug("hasHeader", has_header)
+                has_header_score -= 1
+    debug("hasHeader", has_header_score)
 
-    return has_header > 0
+    return has_header_score > 0

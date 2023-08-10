@@ -57,7 +57,7 @@ def _replace_with_newline(tokens: List[tokenize.TokenInfo], pos: int) -> None:
     tok = tokens[pos]
     tokens[pos] = tokenize.TokenInfo(token.NEWLINE, "\n", tok.start, tok.end, tok.line)
     line_offset = 0
-    for i, tok2 in enumerate(tokens[pos + 1 :]):
+    for i, tok2 in enumerate(tokens[pos + 1:]):
         if i == 0:
             line_offset = tok2.start[1]
         if tok2.start[0] != tok.start[0]:

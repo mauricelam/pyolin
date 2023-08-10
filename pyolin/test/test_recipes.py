@@ -11,6 +11,10 @@ def test_struct_pack(pyolin):
     input_bytes = (
         b"\x35\x49\xC9\x5C\x00\x00\x00\x00\x38\x27\x0B\x00"
         b"\x00\x00\x00\x00\x04\x00\x04\x00\x5A\x00\x07\x00"
+        b"\x35\x49\xC9\x5C\x00\x00\x00\x00\x38\x27\x0B\x00"
+        b"\x00\x00\x00\x00\x01\x00\x50\x00\x01\x00\x00\x00"
+        b"\x35\x49\xC9\x5C\x00\x00\x00\x00\x38\x27\x0B\x00"
+        b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
     )
     # struct input_event {
     #   struct timeval time {
@@ -31,6 +35,8 @@ def test_struct_pack(pyolin):
         | tv_sec     | tv_usec | type | code | value  |
         | ---------- | ------- | ---- | ---- | ------ |
         | 1556695349 | 730936  | 4    | 4    | 458842 |
+        | 1556695349 | 730936  | 1    | 80   | 1      |
+        | 1556695349 | 730936  | 0    | 0    | 0      |
         """
     )
 

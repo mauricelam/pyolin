@@ -4,7 +4,7 @@ import itertools
 from itertools import zip_longest
 from typing import Iterable, Optional, TypeVar, Union
 
-from .field import DeferredType, Field
+from .field import DeferredType
 from .util import StreamingSequence, cache
 
 
@@ -37,8 +37,8 @@ class Record(tuple):
         return super().__new__(
             cls,
             tuple(
-                Field(f, header=h) for f, h in zip_longest(args, header or ())
-            ),  # type: ignore
+                Field(f, header=h) for f, h in zip_longest(args, header or ())  # type: ignore
+            ),
         )
 
     def __init__(
@@ -93,3 +93,14 @@ class RecordSequence(StreamingSequence[T], HasHeader):
             return firstrow
         else:
             return None
+
+
+class Field(DeferredType):
+    """Represents a field in a parsed input data table."""
+
+    def __new__(cls, content, *, header: Optional["Field"]):
+        return super().__new__(cls, content)
+
+    def __init__(self, content, *, header: Optional["Field"]):
+        super().__init__(content)
+        self.header = header

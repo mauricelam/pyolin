@@ -17,6 +17,9 @@ from pyolin import pyolin
 
 @dataclass
 class File:
+    """Represent a test input file, relative to the directory containing this
+    source file."""
+
     filename: str
 
     def path(self):
@@ -103,6 +106,8 @@ def pyolin_prog():
 
 
 class ErrorWithStderr(Exception):
+    """Error with stderr captured. See `run_capturing_output`."""
+
     def __init__(self, stderr, *, errmsg=None):
         self.stderr = stderr
         self.errmsg = errmsg
@@ -110,8 +115,13 @@ class ErrorWithStderr(Exception):
     def __str__(self):
         result = ["", self.errmsg]
         if self.stderr:
-            result += ["", "===== STDERR =====", str(self.stderr), "=================="]
-        if self.__cause__:
+            result += [
+                "",
+                "===== STDERR =====",
+                str(self.stderr),
+                "=================="
+            ]
+        if self.__cause__:  # pylint:disable=using-constant-test
             result += [
                 "",
                 "===== ERROR =====",
@@ -153,8 +163,8 @@ def run_capturing_output(*, errmsg: Optional[str] = None):
         with contextlib.redirect_stderr(err):
             try:
                 yield out
-            except BaseException as e:
-                raise ErrorWithStderr(err.getvalue(), errmsg=errmsg) from e
+            except BaseException as exc:
+                raise ErrorWithStderr(err.getvalue(), errmsg=errmsg) from exc
 
 
 def pytest_assertrepr_compare(op, left, right):
@@ -163,9 +173,9 @@ def pytest_assertrepr_compare(op, left, right):
             return [
                 "",
                 "=== Actual ===",
-                *str(left).split('\n'),
+                *str(left).split("\n"),
                 "===",
                 "=== Expected ===",
-                *str(right).split('\n'),
+                *str(right).split("\n"),
                 "===",
             ]
