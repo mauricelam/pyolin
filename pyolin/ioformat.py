@@ -226,10 +226,13 @@ class AwkParser(AbstractParser):
         assert self.field_separator
         try:
             for record_bytes in gen_lines:
-                yield Record(
-                    *re.split(self.field_separator, record_bytes.decode("utf-8")),
-                    source=record_bytes,
-                )
+                if record_bytes:
+                    yield Record(
+                        *re.split(self.field_separator, record_bytes.decode("utf-8")),
+                        source=record_bytes,
+                    )
+                else:
+                    yield Record(*(), source=record_bytes)
         except UnicodeDecodeError:
             raise AttributeError(
                 "`record`-based attributes are not supported for binary inputs"

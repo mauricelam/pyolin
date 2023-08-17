@@ -18,16 +18,16 @@ from .conftest import ErrorWithStderr, timeout, File
 
 
 def test_lines(pyolin):
-    _in = """
-            Bucks Milwaukee    60 22 0.732
-            Raptors Toronto    58 24 0.707
-            76ers Philadelphia 51 31 0.622
-            Celtics Boston     49 33 0.598
-            Pacers Indiana     48 34 0.585
-            """
+    _in = """\
+        Bucks Milwaukee    60 22 0.732
+        Raptors Toronto    58 24 0.707
+        76ers Philadelphia 51 31 0.622
+        Celtics Boston     49 33 0.598
+        Pacers Indiana     48 34 0.585
+        """
     assert (
         pyolin("line for line in lines", input_=_in)
-        == """
+        == """\
             | value                          |
             | ------------------------------ |
             | Bucks Milwaukee    60 22 0.732 |
@@ -782,7 +782,7 @@ def test_bytes(pyolin):
 
 def test_reversed(pyolin):
     assert pyolin("reversed(lines)") == (
-        """
+        """\
         | value                          |
         | ------------------------------ |
         | Pacers Indiana     48 34 0.585 |
@@ -1119,6 +1119,23 @@ def test_quoted_csv(pyolin):
         | Nightline        |
         | Dateline Friday  |
         | Dateline Sunday  |
+        """
+    )
+
+
+def test_empty_record(pyolin):
+    in_ = """\
+    something
+
+    something
+    """
+    assert pyolin("bool(record)", input_=in_) == (
+        """\
+        | value |
+        | ----- |
+        | True  |
+        | False |
+        | True  |
         """
     )
 
@@ -1992,7 +2009,7 @@ def test_raise_stop_iteration(pyolin):
 
 
 def test_binary_input_len(pyolin):
-    assert pyolin("len(file)", input_=File("data_pickle")) == "21\n"
+    assert pyolin("len(file.bytes)", input_=File("data_pickle")) == "21\n"
 
 
 def test_binary_input_len_non_unicode(pyolin):
@@ -2116,7 +2133,7 @@ def test_set_field_separator(pyolin):
             input_=File("data_grades_simple_csv.csv"),
             input_format="tsv",  # Make sure we can change the field separator from "\t" to ","
         )
-        == """
+        == """\
         | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
         | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
         | Alfalfa   | Aloysius   | 123-45-6789 | 40.0 | 90.0 | 100.0 | 83.0 | 49.0 | D- |
@@ -2543,24 +2560,26 @@ def test_multiline_json_prog(pyolin):
         pyolin(
             textwrap.dedent(
                 """\
-        [
-            ['foo', ['a', 'b']], ['bar', ['c', 'd']]
-        ]"""
+                [
+                    ['foo', ['a', 'b']], ['bar', ['c', 'd']]
+                ]"""
             ),
             input_=File("data_json_example.json"),
         )
-        == """
-        [
+        == (
+            """\
             [
-                "foo",
-                "['a', 'b']"
-            ],
-            [
-                "bar",
-                "['c', 'd']"
+                [
+                    "foo",
+                    "['a', 'b']"
+                ],
+                [
+                    "bar",
+                    "['c', 'd']"
+                ]
             ]
-        ]
-        """
+            """
+        )
     )
 
 
@@ -2628,3 +2647,7 @@ def test_records_negative_slice_step(pyolin):
 
 # TODOs:
 # Bash / Zsh autocomplete integration
+# Multiline / interactive mode / ipython integration?
+# Easier to define globals
+# yield support
+# ARGV that provides deferred typing

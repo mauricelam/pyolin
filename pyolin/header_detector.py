@@ -25,10 +25,18 @@ def has_header(stream: Iterator[Record]) -> bool:
 
     columns = len(header)
     column_types: List[Union[Type, int, None]] = [None] * columns
+    irregular_row_count = 0
+    sample_row_count = 0
 
+    # Find the type or length of each column from a sample row
     for row in itertools.islice(stream, 0, 20):
         if len(row) != columns:
+            irregular_row_count += 1
+            if irregular_row_count > 4:
+                return False
             continue  # skip rows that have irregular number of columns
+
+        sample_row_count += 1
 
         for col, _ in enumerate(column_types):
             for this_type in (int, float, complex):
@@ -48,6 +56,9 @@ def has_header(stream: Iterator[Record]) -> bool:
                     # type is inconsistent, remove column from
                     # consideration
                     column_types[col] = "Disqualified"
+
+    if sample_row_count < irregular_row_count:
+        return False
 
     debug("column types", column_types)
     # finally, compare results against first row and "vote"

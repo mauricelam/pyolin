@@ -40,6 +40,7 @@ def test_struct_pack(pyolin):
         """
     )
 
+
 def test_base64(pyolin):
     """Base64 encode a given string from stdin"""
     assert pyolin("base64.b64encode(contents.bytes)", input_=b'Hello world') == (

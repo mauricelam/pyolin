@@ -14,14 +14,16 @@ class DeferredType(str):
     In order to explicitly type this, use `.int`, `.bool`, `.str`, or
     `.bytes`."""
 
-    def __new__(cls, content: Union['DeferredType', str, bytes]):
+    def __new__(cls, content: Union['DeferredType', str, bytes, None]):
         if isinstance(content, DeferredType):
             return content
         elif isinstance(content, (bytes, bytearray)):
             return super().__new__(cls, content.decode("utf-8", errors="replace"))
+        elif content is None:
+            return super().__new__(cls, '')
         return super().__new__(cls, content)
 
-    def __init__(self, content: Union['DeferredType', str, bytes]):
+    def __init__(self, content: Union['DeferredType', str, bytes, None]):
         if isinstance(content, DeferredType):
             self.source = content.source
             self.is_valid_str = content.is_valid_str
@@ -30,11 +32,12 @@ class DeferredType(str):
             self.is_valid_str = True
         else:
             self.source = content
-            try:
-                content.decode("utf-8")
-                self.is_valid_str = True
-            except UnicodeDecodeError:
-                self.is_valid_str = False
+            if content is not None:
+                try:
+                    content.decode("utf-8")
+                    self.is_valid_str = True
+                except UnicodeDecodeError:
+                    self.is_valid_str = False
 
     def _isnumber(self):
         try:
@@ -112,7 +115,10 @@ class DeferredType(str):
 
     def __radd__(self, other):
         modified_self, modified_other = self._coerce_with_type_check(other)
-        return modified_self.__radd__(modified_other)  # type: ignore
+        if isinstance(modified_self, super):
+            return modified_other + self.str
+        else:
+            return modified_self.__radd__(modified_other)  # type: ignore
 
     def __sub__(self, other):
         modified_self, modified_other = self._coerce_assuming_numeric(other)

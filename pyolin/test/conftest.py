@@ -54,7 +54,7 @@ class TextIO(io.TextIOWrapper):
 
     def __eq__(self, o):
         if isinstance(o, str):
-            return self.getvalue().__eq__(textwrap.dedent(o.lstrip("\n")))
+            return self.getvalue().__eq__(custom_dedent(o))
         if isinstance(o, bytes):
             return self.getbytes().__eq__(o)
         return self.getvalue().__eq__(o)
@@ -167,15 +167,25 @@ def run_capturing_output(*, errmsg: Optional[str] = None):
                 raise ErrorWithStderr(err.getvalue(), errmsg=errmsg) from exc
 
 
+def custom_dedent(text: str) -> str:
+    """Similar to textwrap.dedent, but only looks at the last line for the
+    prefix, so the remaining lines can still contain leading whitespaces."""
+    lines = text.split('\n')
+    num_spaces = len(lines[-1]) - len(lines[-1].lstrip(' \t'))
+    assert all(not line[:num_spaces].lstrip(' \t') for line in lines)
+    return '\n'.join(line[num_spaces:] for line in lines)
+
+
 def pytest_assertrepr_compare(op, left, right):
     if isinstance(left, TextIO) or isinstance(right, TextIO) and op == "==":
-        if str(left) != str(right):
-            return [
-                "",
-                "=== Actual ===",
-                *str(left).split("\n"),
-                "===",
-                "=== Expected ===",
-                *str(right).split("\n"),
-                "===",
-            ]
+        left = custom_dedent(str(left))
+        right = custom_dedent(str(right))
+        return [
+            "",
+            "=== Actual ===",
+            *left.split("\n"),
+            "===",
+            "=== Expected ===",
+            *right.split("\n"),
+            "===",
+        ]
