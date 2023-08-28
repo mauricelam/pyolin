@@ -7,8 +7,8 @@ from .util import _UNDEFINED_
 
 
 class CustomJsonEncoder(json.JSONEncoder):
-    """Custom JSON encoder that accepts more different types (at the cost of
-    less type safety)"""
+    """Custom JSON encoder that accepts more types (at the cost of less type
+    safety)"""
 
     def iterencode(self, o: Any, _one_shot=False):
         yield from super().iterencode(_WrappedValue(o), _one_shot=_one_shot)
@@ -22,6 +22,7 @@ class CustomJsonEncoder(json.JSONEncoder):
             return json.JSONEncoder.default(self, o)
         except TypeError:
             return repr(o)
+
 
 class _WrappedValue:
     def __init__(self, value: Any):

@@ -211,6 +211,9 @@ def _execute_internal(
             "record": record_var,
             "fields": record_var,
             "line": Item(lambda: record_var().source),
+            # TODO: Refactor this so that I can make jsonobj "line scoped" (not record scoped), to
+            #   avoid triggering the JSON parser. (JSON parser doesn't give real `.source` values)
+            "jsonobj": LazyItem(lambda: json.loads(get_contents(input_))),
             # Table scoped
             "lines": table_scoped(
                 lambda: StreamingSequence(r.source for r in record_seq)
@@ -219,7 +222,6 @@ def _execute_internal(
             "file": table_scoped(lambda: get_contents(input_)),
             "contents": table_scoped(lambda: get_contents(input_)),
             "df": table_scoped(get_dataframe),
-            "jsonobj": table_scoped(lambda: json.loads(get_contents(input_))),
             # Other
             "filename": input_,
             "_UNDEFINED_": _UNDEFINED_,

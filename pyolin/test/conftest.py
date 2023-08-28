@@ -1,6 +1,7 @@
 """Utilities for testing."""
 
 import contextlib
+import difflib
 from dataclasses import dataclass
 import io
 import os
@@ -115,12 +116,7 @@ class ErrorWithStderr(Exception):
     def __str__(self):
         result = ["", self.errmsg]
         if self.stderr:
-            result += [
-                "",
-                "===== STDERR =====",
-                str(self.stderr),
-                "=================="
-            ]
+            result += ["", "===== STDERR =====", str(self.stderr), "=================="]
         if self.__cause__:  # pylint:disable=using-constant-test
             result += [
                 "",
@@ -170,22 +166,36 @@ def run_capturing_output(*, errmsg: Optional[str] = None):
 def custom_dedent(text: str) -> str:
     """Similar to textwrap.dedent, but only looks at the last line for the
     prefix, so the remaining lines can still contain leading whitespaces."""
-    lines = text.split('\n')
-    num_spaces = len(lines[-1]) - len(lines[-1].lstrip(' \t'))
-    assert all(not line[:num_spaces].lstrip(' \t') for line in lines)
-    return '\n'.join(line[num_spaces:] for line in lines)
+    if not text:
+        return text
+    lines = text.split("\n")
+    lines = lines[1:] if not lines[0] else lines
+    num_spaces = len(lines[-1]) - len(lines[-1].lstrip(" \t"))
+    for line in lines:
+        assert not line[:num_spaces].lstrip(" \t"), f"Dedent failed on line: {line}"
+    return "\n".join(line[num_spaces:] for line in lines)
+
+
+def assert_startswith(output, prefix):
+    prefix = custom_dedent(prefix.lstrip('\n'))
+    assert output.startswith(prefix), "\n".join(
+        difflib.unified_diff(
+            output[: len(prefix) + 50].split("\n"), prefix.split("\n")
+        )
+    )
+
+
+def assert_contains(output, substring):
+    substring = custom_dedent(substring.lstrip('\n'))
+    assert substring in output, "\n".join(
+        difflib.unified_diff(
+            output.split("\n"), substring.split("\n")
+        )
+    )
 
 
 def pytest_assertrepr_compare(op, left, right):
     if isinstance(left, TextIO) or isinstance(right, TextIO) and op == "==":
         left = custom_dedent(str(left))
         right = custom_dedent(str(right))
-        return [
-            "",
-            "=== Actual ===",
-            *left.split("\n"),
-            "===",
-            "=== Expected ===",
-            *right.split("\n"),
-            "===",
-        ]
+        return list(difflib.unified_diff(left.split("\n"), right.split("\n")))

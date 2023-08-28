@@ -170,7 +170,7 @@ class AutoParser(AbstractParser):
                 # Update field_separator to the detected delimiter
                 assert csv_parser.dialect
                 self.field_separator = csv_parser.dialect.delimiter
-                return csv_parser.gen_records_from_lines(gen_lines, csv_sniffer)
+                yield from csv_parser.gen_records_from_lines(gen_lines, csv_sniffer)
             else:
                 json_parser = JsonParser(self.record_separator, self.field_separator)
                 gen_lines, gen_lines_for_json = itertools.tee(gen_lines)
@@ -184,10 +184,11 @@ class AutoParser(AbstractParser):
                             )
                         )
                         self.has_header = True
-                        return json_parser.gen_records_from_json(json_object)
-                    except json.JSONDecodeError:
+                        yield from json_parser.gen_records_from_json(json_object)
+                        return
+                    except (json.JSONDecodeError, UnexpectedDataFormat):
                         pass
-                return AwkParser(
+                yield from AwkParser(
                     self.record_separator, self.field_separator
                 ).gen_records_from_lines(gen_lines)
         except _LimitReached:
@@ -198,6 +199,10 @@ class AutoParser(AbstractParser):
             raise AttributeError(
                 "`record`-based attributes are not supported for binary inputs"
             ) from None
+
+
+class UnexpectedDataFormat(RuntimeError):
+    """Error raised when the input data format is unexpected"""
 
 
 class AwkParser(AbstractParser):
@@ -384,14 +389,19 @@ class JsonParser(AbstractParser):
         """Generates the records from a given iterable of JSON objects."""
         for i, record in enumerate(json_object):
             if not isinstance(record, dict):
-                raise TypeError("Input is not an array of objects")
+                raise UnexpectedDataFormat("Input is not an array of objects")
             if not i:
                 yield Record(*record.keys(), source=b"")
             yield Record(*record.values(), source=json.dumps(record).encode("utf-8"))
 
     def gen_records(self, stream: typing.BinaryIO):
-        json_object = json.load(stream)
-        return self.gen_records_from_json(json_object)
+        lines = _gen_split(stream, self.record_separator)
+        try:
+            yield from self.gen_records_from_json(json.loads(line) for line in lines)
+        except json.JSONDecodeError:
+            stream.seek(0)
+            json_object = json.load(stream)
+            yield from self.gen_records_from_json(json_object)
 
 
 PARSERS = {
@@ -526,7 +536,7 @@ class AutoPrinter(Printer):
             result, (str, Record, tuple, bytes)
         ):
             first_row = next(iter(result), None)
-            if isinstance(first_row, collections.abc.Sequence):
+            if isinstance(first_row, (dict, collections.abc.Sequence)):
                 if all(not is_list_like(cell) for cell in first_row):
                     return "markdown"
                 else:
@@ -597,8 +607,8 @@ class CsvPrinter(Printer):
 class _MarkdownRowFormat:
     def __init__(self, widths):
         self._width_formats = [f"{{:{w}}}" for w in widths]
-        self._row_template = "| " + " | ".join(self._width_formats) + " |"
-        self._cont_row_template = ": " + " : ".join(self._width_formats) + " :"
+        self._row_template = "| " + " | ".join(self._width_formats) + " |" if widths else "|"
+        self._cont_row_template = ": " + " : ".join(self._width_formats) + " :" if widths else ":"
         self._wrappers = [
             textwrap.TextWrapper(
                 width=w,
@@ -677,13 +687,15 @@ class MarkdownPrinter(Printer):
         if result is _UNDEFINED_:
             return
         header, table_result = self.to_table(result, header=header)
-        table1, table2 = itertools.tee(table_result)
+        table1, table2, table3 = itertools.tee(table_result, 3)
         widths = self._allocate_width(header, itertools.islice(table2, 10))
         row_format = _MarkdownRowFormat(widths)
-        if not header:
-            return
-        yield row_format.format(header)
-        yield "| " + " | ".join("-" * w for w in widths) + " |\n"
+        if not header and not any(True for _ in table3):
+            return  # Empty result, skip printing
+        if header:
+            # Edge case: don't print out an empty header
+            yield row_format.format(header)
+            yield "| " + " | ".join("-" * w for w in widths) + " |\n"
         for record in table1:
             yield row_format.format(record)
 
@@ -703,10 +715,10 @@ class JsonPrinter(Printer):
         if is_list_like(result):
             (peek_row,), result = peek_iter(result, 1)
             if is_list_like(peek_row):
-                if not is_list_like(next(iter(peek_row), None)):
+                if all(not is_list_like(field) and not isinstance(field, dict) for field in peek_row):
                     header, table = self.to_table(result, header=header)
                     if isinstance(header, _SynthesizedHeader):
-                        yield from CustomJsonEncoder(indent=4).iterencode(table)
+                        yield from CustomJsonEncoder(indent=2).iterencode(table)
                         yield "\n"
                         return
                     else:
@@ -721,13 +733,45 @@ class JsonPrinter(Printer):
                         yield "\n]\n"
                         return
             if header:
-                yield from CustomJsonEncoder(indent=4).iterencode(
+                yield from CustomJsonEncoder(indent=2).iterencode(
                     dict(zip(header, result))
                 )
                 yield "\n"
                 return
-        yield from CustomJsonEncoder(indent=4).iterencode(result)
+        yield from CustomJsonEncoder(indent=2).iterencode(result)
         yield "\n"
+
+
+class JsonlPrinter(Printer):
+    """Prints the results out in JSON-lines format.
+
+    For each item in the result, if the item is table-like:
+        if input has header row: prints it out as array of objects.
+        else: prints it out in a 2D-array.
+    else:
+        Regular json.dumps()"""
+
+    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+        if result is _UNDEFINED_:
+            return
+        encoder = CustomJsonEncoder()
+        gen_json = None
+        if is_list_like(result):
+            (peek_row,), result = peek_iter(result, 1)
+            if is_list_like(peek_row):
+                if all(not is_list_like(field) for field in peek_row):
+                    header, table = self.to_table(result, header=header)
+                    if isinstance(header, _SynthesizedHeader):
+                        gen_json = table
+                    else:
+                        gen_json = (dict(zip(header, record)) for record in table)
+            if not gen_json:
+                gen_json = result
+            for line in gen_json:
+                yield from encoder.iterencode(line)
+                yield "\n"
+        else:
+            raise RuntimeError('Cannot print non-list-like output to as JSONL')
 
 
 class ReprPrinter(Printer):
@@ -774,6 +818,7 @@ PRINTERS = {
     "markdown": MarkdownPrinter,
     "table": MarkdownPrinter,
     "json": JsonPrinter,
+    "jsonl": JsonlPrinter,
     "repr": ReprPrinter,
     "str": StrPrinter,
     "binary": BinaryPrinter,

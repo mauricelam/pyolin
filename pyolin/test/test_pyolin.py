@@ -525,9 +525,16 @@ def test_contents(pyolin):
 
 
 def test_empty_list(pyolin):
-    assert (
-        pyolin("[]")
-        == """\
+    assert pyolin("[]") == (
+        """\
+        """
+    )
+
+
+def test_markdown_empty_header(pyolin):
+    assert pyolin("[(), (1,2,3)]", output_format="markdown") == (
+        """\
+        | 1 | 2 | 3 |
         """
     )
 
@@ -1763,12 +1770,28 @@ def test_json_output(pyolin):
         )
         == """\
         [
-            "Bucks",
-            "Milwaukee",
-            60,
-            22,
-            0.732
+          "Bucks",
+          "Milwaukee",
+          60,
+          22,
+          0.732
         ]
+        """
+    )
+
+
+def test_jsonl_output(pyolin):
+    assert (
+        pyolin(
+            "records",
+            output_format="jsonl",
+        )
+        == """\
+        ["Bucks", "Milwaukee", 60, 22, 0.732]
+        ["Raptors", "Toronto", 58, 24, 0.707]
+        ["76ers", "Philadelphia", 51, 31, 0.622]
+        ["Celtics", "Boston", 49, 33, 0.598]
+        ["Pacers", "Indiana", 48, 34, 0.585]
         """
     )
 
@@ -1781,12 +1804,28 @@ def test_json_output_with_manual_header(pyolin):
         )
         == """\
         {
-            "team": "Bucks",
-            "city": "Milwaukee",
-            "wins": 60,
-            "loss": 22,
-            "Win rate": 0.732
+          "team": "Bucks",
+          "city": "Milwaukee",
+          "wins": 60,
+          "loss": 22,
+          "Win rate": 0.732
         }
+        """
+    )
+
+
+def test_jsonl_output_with_manual_header(pyolin):
+    assert (
+        pyolin(
+            "cfg.header = ['team', 'city', 'wins', 'loss', 'Win rate']; records",
+            output_format="jsonl",
+        )
+        == """\
+        {"team": "Bucks", "city": "Milwaukee", "wins": 60, "loss": 22, "Win rate": 0.732}
+        {"team": "Raptors", "city": "Toronto", "wins": 58, "loss": 24, "Win rate": 0.707}
+        {"team": "76ers", "city": "Philadelphia", "wins": 51, "loss": 31, "Win rate": 0.622}
+        {"team": "Celtics", "city": "Boston", "wins": 49, "loss": 33, "Win rate": 0.598}
+        {"team": "Pacers", "city": "Indiana", "wins": 48, "loss": 34, "Win rate": 0.585}
         """
     )
 
@@ -1831,6 +1870,29 @@ def test_json_input(pyolin):
         | magenta | #f0f  |
         | yellow  | #ff0  |
         | black   | #000  |
+        """
+    )
+
+
+def test_jsonl_input(pyolin):
+    """One JSON object per line"""
+    in_ = """\
+    { "color": "red", "value": "#f00" }
+    { "color": "green", "value": "#0f0" }
+    { "color": "blue", "value": "#00f" }
+    """
+    assert pyolin(
+        "records",
+        input_=in_,
+        input_format="json",
+        output_format="markdown",
+    ) == (
+        """\
+        | color | value |
+        | ----- | ----- |
+        | red   | #f00  |
+        | green | #0f0  |
+        | blue  | #00f  |
         """
     )
 
@@ -2400,11 +2462,11 @@ def test_sys_argv(pyolin):
         (
             "json",
             """\
-                {
-                    "color": "red",
-                    "value": "#f00"
-                }
-                """,
+            {
+              "color": "red",
+              "value": "#f00"
+            }
+            """,
         ),
     ],
 )
@@ -2437,37 +2499,37 @@ def test_manual_load_json_record(pyolin, output_format, expected):
         (
             "json",
             """\
-                [
-                    {
-                        "color": "red",
-                        "value": "#f00"
-                    },
-                    {
-                        "color": "green",
-                        "value": "#0f0"
-                    },
-                    {
-                        "color": "blue",
-                        "value": "#00f"
-                    },
-                    {
-                        "color": "cyan",
-                        "value": "#0ff"
-                    },
-                    {
-                        "color": "magenta",
-                        "value": "#f0f"
-                    },
-                    {
-                        "color": "yellow",
-                        "value": "#ff0"
-                    },
-                    {
-                        "color": "black",
-                        "value": "#000"
-                    }
-                ]
-                """,
+            [
+              {
+                "color": "red",
+                "value": "#f00"
+              },
+              {
+                "color": "green",
+                "value": "#0f0"
+              },
+              {
+                "color": "blue",
+                "value": "#00f"
+              },
+              {
+                "color": "cyan",
+                "value": "#0ff"
+              },
+              {
+                "color": "magenta",
+                "value": "#f0f"
+              },
+              {
+                "color": "yellow",
+                "value": "#ff0"
+              },
+              {
+                "color": "black",
+                "value": "#000"
+              }
+            ]
+            """,
         ),
     ],
 )
@@ -2502,18 +2564,15 @@ def test_manual_load_csv(pyolin):
 
 def test_non_table_json(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
-        pyolin("records", input_=File("data_json_example.json"))
+        pyolin("records", input_=File("data_json_example.json"), input_format="json")
         assert "TypeError: Input is not an array of objects" == str(exc.value.__cause__)
 
 
 def test_jsonobj_string_output(pyolin):
-    assert (
-        pyolin(
+    assert pyolin(
             "jsonobj['glossary']['title']",
             input_=File("data_json_example.json"),
-        )
-        == "example glossary\n"
-    )
+        ) == "example glossary\n"
 
 
 def test_jsonobj_obj_output(pyolin):
@@ -2524,11 +2583,11 @@ def test_jsonobj_obj_output(pyolin):
         )
         == """\
         {
-            "para": "A meta-markup language, used to create markup languages such as DocBook.",
-            "GlossSeeAlso": [
-                "GML",
-                "XML"
-            ]
+          "para": "A meta-markup language, used to create markup languages such as DocBook.",
+          "GlossSeeAlso": [
+            "GML",
+            "XML"
+          ]
         }
         """
     )
@@ -2542,14 +2601,20 @@ def test_3d_table(pyolin):
         )
         == """\
         [
+          [
+            "foo",
             [
-                "foo",
-                "['a', 'b']"
-            ],
-            [
-                "bar",
-                "['c', 'd']"
+              "a",
+              "b"
             ]
+          ],
+          [
+            "bar",
+            [
+              "c",
+              "d"
+            ]
+          ]
         ]
         """
     )
@@ -2569,14 +2634,20 @@ def test_multiline_json_prog(pyolin):
         == (
             """\
             [
+              [
+                "foo",
                 [
-                    "foo",
-                    "['a', 'b']"
-                ],
-                [
-                    "bar",
-                    "['c', 'd']"
+                  "a",
+                  "b"
                 ]
+              ],
+              [
+                "bar",
+                [
+                  "c",
+                  "d"
+                ]
+              ]
             ]
             """
         )
@@ -2592,7 +2663,7 @@ def test_json_with_undefined(pyolin):
         )
         == """\
         [
-            "foo"
+          "foo"
         ]
         """
     )
