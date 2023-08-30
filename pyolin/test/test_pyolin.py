@@ -1271,6 +1271,24 @@ def test_statement_table(pyolin):
     )
 
 
+def test_input_too_long(pyolin):
+    with pytest.raises(ErrorWithStderr) as exc:
+        pyolin("records[0]", input_=b"t" * 4001)
+    assert str(exc.value.__cause__.__cause__) == textwrap.dedent(  # type: ignore
+        """\
+        Unable to detect input format. Try specifying the input type with --input_format"""
+    )
+
+
+def test_input_long_but_broken_into_lines(pyolin):
+    assert pyolin("records[0]", input_=b"t" * 2000 + b"\n" + b"x" * 3000) == (
+        f"""\
+        { "t" * 2000 }
+        { "x" * 3000 }
+        """
+    )
+
+
 def test_syntax_error(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a..x")
@@ -2570,10 +2588,13 @@ def test_non_table_json(pyolin):
 
 
 def test_jsonobj_string_output(pyolin):
-    assert pyolin(
+    assert (
+        pyolin(
             "jsonobj['glossary']['title']",
             input_=File("data_json_example.json"),
-        ) == "example glossary\n"
+        )
+        == "example glossary\n"
+    )
 
 
 def test_jsonobj_obj_output(pyolin):

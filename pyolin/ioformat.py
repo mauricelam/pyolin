@@ -28,6 +28,8 @@ from typing import (
     Union,
 )
 
+from pyolin.parser import UserError
+
 
 from .json_encoder import CustomJsonEncoder
 from .record import Field, Record, Header, HasHeader
