@@ -21,8 +21,7 @@ from typing import (
 import typing
 from hashbang import command, Argument
 
-from pyolin.field import DeferredType
-
+from .field import DeferredType
 from .ioformat import (
     PARSERS,
     PRINTERS,
@@ -31,6 +30,7 @@ from .ioformat import (
     create_parser,
     new_printer,
 )
+from .plugins import auto_parser, json as json_plugin
 from .util import (
     LazyItem,
     Item,
@@ -41,6 +41,10 @@ from .util import (
 )
 from .record import Header, RecordSequence
 from .parser import Prog
+
+
+json_plugin.register()
+auto_parser.register()
 
 
 @contextmanager
