@@ -376,7 +376,6 @@ def test_group_by_user(pyolin):
             "d.values()"
         ),
         input_=File("data_jq_example_twitter.jsonl"),
-        input_format="awk",  # TODO: make auto parser work
         output_format="json",
     )
     assert_startswith(
@@ -419,7 +418,6 @@ def test_create_table_of_users(pyolin):
             "';'.join(str(t['id']) for t in tweets)) for id, tweets in d.items()"
         ),
         input_=File("data_jq_example_twitter.jsonl"),
-        input_format="awk",  # TODO: make auto parser work
         output_format="csv",
     )
     assert_startswith(
@@ -459,7 +457,6 @@ def test_count_hashtags(pyolin):
             "collections.Counter(ht['text'] for obj in objs for ht in obj['entities']['hashtags']).items()"  # noqa: E501
         ),
         input_=File("data_jq_example_twitter.jsonl"),
-        input_format="awk",  # TODO: make auto parser work
         output_format="csv",
     )
     assert_startswith(
@@ -495,7 +492,6 @@ def test_filter_before_counting(pyolin):
             "collections.Counter(ht['text'] for obj in objs for ht in obj['entities']['hashtags'] if obj['retweet_count'] >= 200).items()"  # noqa: E501
         ),
         input_=File("data_jq_example_twitter.jsonl"),
-        input_format="awk",  # TODO: make auto parser work
         output_format="csv",
     )
     assert_startswith(
@@ -528,7 +524,6 @@ def test_count_total_tweets_per_user(pyolin):
             "(id, sum(t['retweet_count'] for t in tweets)) for id, tweets in d.items()"
         ),
         input_=File("data_jq_example_twitter.jsonl"),
-        input_format="awk",  # TODO: make auto parser work
         output_format="csv",
     )
     assert_contains(
