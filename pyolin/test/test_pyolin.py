@@ -2280,6 +2280,7 @@ def test_gen_records_if_undefined(input_file_nba):
         ("repr", "Undefined()\n"),
         ("str", ""),
         ("json", ""),
+        ("jsonl", ""),
         ("awk", ""),
         ("auto", ""),
         ("binary", ""),
@@ -2453,7 +2454,7 @@ def test_sys_argv(pyolin):
     "output_format, expected",
     [
         (
-            "awk",
+            "txt",
             """\
                 color red
                 value #f00

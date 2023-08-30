@@ -44,7 +44,7 @@ from . import header_detector
 __all__ = [
     "AbstractParser",
     "AutoParser",
-    "AwkParser",
+    "TxtParser",
     "CsvParser",
     "JsonParser",
     "AutoPrinter",
@@ -52,7 +52,7 @@ __all__ = [
     "PARSERS",
     "Printer",
     "AutoPrinter",
-    "AwkPrinter",
+    "TxtPrinter",
     "CsvPrinter",
     "MarkdownPrinter",
     "JsonPrinter",
@@ -188,7 +188,7 @@ class AutoParser(AbstractParser):
                         return
                     except (json.JSONDecodeError, UnexpectedDataFormat):
                         pass
-                yield from AwkParser(
+                yield from TxtParser(
                     self.record_separator, self.field_separator
                 ).gen_records_from_lines(gen_lines)
         except _LimitReached:
@@ -205,7 +205,7 @@ class UnexpectedDataFormat(RuntimeError):
     """Error raised when the input data format is unexpected"""
 
 
-class AwkParser(AbstractParser):
+class TxtParser(AbstractParser):
     """A parser in the AWK style, which can be thought of as whitespace
     separated values. It splits the records by the `record_separator`, which is
     the newline charater by default, and splits the record into fields using the
@@ -214,7 +214,7 @@ class AwkParser(AbstractParser):
     def __init__(
         self,
         record_separator: str,
-        # For AwkParser, the field separator is a regex string.
+        # For TxtParser, the field separator is a regex string.
         field_separator: Optional[str],
     ):
         super().__init__(record_separator, field_separator or r"[ \t]+")
@@ -406,7 +406,8 @@ class JsonParser(AbstractParser):
 
 PARSERS = {
     "auto": AutoParser,
-    "awk": AwkParser,
+    "txt": TxtParser,
+    "awk": TxtParser,
     "csv": CsvParser,
     "csv_excel": lambda rs, fs: CsvParser(rs, fs, dialect=csv.excel),
     "csv_unix": lambda rs, fs: CsvParser(rs, fs, dialect=csv.unix_dialect),
@@ -543,7 +544,7 @@ class AutoPrinter(Printer):
                     return "json"
             else:
                 return "markdown"
-        return "awk"
+        return "txt"
 
     def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
         tee_result, result = tee_if_iterable(result)
@@ -552,7 +553,7 @@ class AutoPrinter(Printer):
         yield from self._printer.gen_result(result, header=header)
 
 
-class AwkPrinter(Printer):
+class TxtPrinter(Printer):
     """A printer that prints out the results in a space-separated format,
     similar to AWK."""
 
@@ -811,14 +812,21 @@ class BinaryPrinter(Printer):
 
 PRINTERS = {
     "auto": AutoPrinter,
-    "awk": AwkPrinter,
-    "unix": AwkPrinter,
+
+    "txt": TxtPrinter,
+    "awk": TxtPrinter,
+    "unix": TxtPrinter,
+
     "csv": CsvPrinter,
     "tsv": lambda: CsvPrinter(delimiter="\t"),
+
     "markdown": MarkdownPrinter,
+    "md": MarkdownPrinter,
     "table": MarkdownPrinter,
+
     "json": JsonPrinter,
     "jsonl": JsonlPrinter,
+
     "repr": ReprPrinter,
     "str": StrPrinter,
     "binary": BinaryPrinter,
