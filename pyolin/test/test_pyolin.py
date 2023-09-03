@@ -704,16 +704,16 @@ def test_module_import(pyolin):
 
 def test_record_variables(pyolin):
     assert pyolin(
-        "type(record).__name__, type(line.str).__name__, type(fields).__name__"
+        "type(record).__name__, type(record.source).__name__, type(fields).__name__"
     ) == (
         """\
-        | 0      | 1   | 2      |
-        | ------ | --- | ------ |
-        | Record | str | Record |
-        | Record | str | Record |
-        | Record | str | Record |
-        | Record | str | Record |
-        | Record | str | Record |
+        | 0      | 1            | 2      |
+        | ------ | ------------ | ------ |
+        | Record | DeferredType | Record |
+        | Record | DeferredType | Record |
+        | Record | DeferredType | Record |
+        | Record | DeferredType | Record |
+        | Record | DeferredType | Record |
         """
     )
 
@@ -810,7 +810,7 @@ def test_in_operator(pyolin):
 
 
 def test_url_quote(pyolin):
-    assert pyolin("urllib.parse.quote(line.str)") == (
+    assert pyolin("urllib.parse.quote(line)") == (
         """\
         | value                                          |
         | ---------------------------------------------- |
@@ -1408,7 +1408,7 @@ def test_assign_to_record(pyolin):
 def test_access_record_and_table(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a = record[0]; b = records; b")
-    assert "Cannot access both record scoped and table scoped variables" == str(
+    assert 'Cannot change scope from "record" to "file"' == str(
         exc.value.__cause__.__cause__  # type: ignore
     )
 
@@ -1416,7 +1416,7 @@ def test_access_record_and_table(pyolin):
 def test_access_table_and_record(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a = records; b = record[0]; b")
-    assert "Cannot access both record scoped and table scoped variables" in str(
+    assert 'Cannot change scope from "file" to "record"' in str(
         exc.value.__cause__
     )
 
@@ -2474,9 +2474,9 @@ def test_sys_argv(pyolin):
         (
             "txt",
             """\
-                color red
-                value #f00
-                """,
+            color value
+            red #f00
+            """,
         ),
         (
             "json",
@@ -2504,16 +2504,19 @@ def test_manual_load_json_record(pyolin, output_format, expected):
     "output_format, expected",
     [
         (
-            "awk",
+            "txt",
+            # There isn't really a correct format for arbitrary JSON when using txt output.
+            # Currently each object has its key-value pair flattened into separate columns
             """\
-                ('color', 'red') ('value', '#f00')
-                ('color', 'green') ('value', '#0f0')
-                ('color', 'blue') ('value', '#00f')
-                ('color', 'cyan') ('value', '#0ff')
-                ('color', 'magenta') ('value', '#f0f')
-                ('color', 'yellow') ('value', '#ff0')
-                ('color', 'black') ('value', '#000')
-                """,
+            color value
+            red #f00
+            green #0f0
+            blue #00f
+            cyan #0ff
+            magenta #f0f
+            yellow #ff0
+            black #000
+            """,
         ),
         (
             "json",
@@ -2550,6 +2553,20 @@ def test_manual_load_json_record(pyolin, output_format, expected):
             ]
             """,
         ),
+        (
+            "md",
+            """\
+            | color   | value |
+            | ------- | ----- |
+            | red     | #f00  |
+            | green   | #0f0  |
+            | blue    | #00f  |
+            | cyan    | #0ff  |
+            | magenta | #f0f  |
+            | yellow  | #ff0  |
+            | black   | #000  |
+            """
+        )
     ],
 )
 def test_manual_load_json_output(pyolin, output_format, expected):
@@ -2588,22 +2605,40 @@ def test_non_table_json(pyolin):
 
 
 def test_jsonobj_string_output(pyolin):
-    assert (
-        pyolin(
-            "jsonobj['glossary']['title']",
-            input_=File("data_json_example.json"),
-        )
-        == "example glossary\n"
+    assert pyolin(
+        "jsonobj['glossary']['title']",
+        input_=File("data_json_example.json"),
+        output_format="txt",
+    ) == ("example glossary\n")
+
+
+def test_jsonobjs_single_line(pyolin):
+    in_ = """\
+    {"a": 1, "b": 2}
+    {"a": 2, "b": 3}
+    {"a": 3, "b": 4}
+    """
+    assert pyolin(
+        "jsonobjs",
+        input_=in_,
+        output_format="txt",
+    ) == (
+        """\
+        a b
+        1 2
+        2 3
+        3 4
+        """
     )
 
 
 def test_jsonobj_obj_output(pyolin):
-    assert (
-        pyolin(
-            "jsonobj['glossary']['GlossDiv']['GlossList']['GlossEntry']['GlossDef']",
-            input_=File("data_json_example.json"),
-        )
-        == """\
+    assert pyolin(
+        "jsonobj['glossary']['GlossDiv']['GlossList']['GlossEntry']['GlossDef']",
+        input_=File("data_json_example.json"),
+        output_format="json",
+    ) == (
+        """\
         {
           "para": "A meta-markup language, used to create markup languages such as DocBook.",
           "GlossSeeAlso": [

@@ -1,7 +1,9 @@
 """Main entry point for Pyolin, the utility to easily write Python one-liners."""
 
 import argparse
+from dataclasses import dataclass
 import importlib
+from io import TextIOWrapper
 import itertools
 import sys
 import json
@@ -9,10 +11,9 @@ import json
 from contextlib import contextmanager
 from typing import (
     Any,
-    Callable,
     Generator,
-    Generic,
     Iterable,
+    Iterator,
     Optional,
     Tuple,
     TypeVar,
@@ -28,6 +29,7 @@ from .ioformat import (
     AbstractParser,
     Printer,
     create_parser,
+    gen_split,
     new_printer,
 )
 from .plugins import auto_parser, json as json_plugin
@@ -38,6 +40,7 @@ from .util import (
     StreamingSequence,
     _UNDEFINED_,
     NoMoreRecords,
+    peek_iter,
 )
 from .record import Header, RecordSequence
 from .parser import Prog
@@ -64,37 +67,35 @@ def get_io(
 
 
 T = TypeVar("T")
+_SENTINEL = object()
 
 
-class RecordScoped(LazyItem, Generic[T]):
-    """An Item in the global scope that is record scoped, which will cause the
-    program to be executed multiple times until the input is exhausted."""
+class ReplayIter(Iterator[T]):
 
-    _on_accessed: Callable[[], None]
+    def __init__(self, iterator):
+        self._curval: Union[T, object] = _SENTINEL
+        self._iter = iterator
 
-    def __init__(self, generator: RecordSequence, *, on_accessed: Callable[[], None]):
-        super().__init__(self._get_first_time, on_accessed=on_accessed)
-        self._iter = iter(generator)
+    def __next__(self) -> T:
+        self._curval = next(self._iter)
+        return typing.cast(T, self._curval)
 
-    def _get_first_time(self):
-        self._on_accessed()
-        next(self)
-        return self._val
+    def current_or_first_value(self) -> T:
+        return typing.cast(T, self._curval) if self._curval is not _SENTINEL else next(self)
 
-    def __iter__(self):
-        return self
+    def has_multiple_items(self) -> bool:
+        preview, self._iter = peek_iter(self._iter, 2)
+        return len(preview) == 2
 
-    def __next__(self):
-        """
-        Advances to the next record in the generator. This is done manually so
-        that the value can be accessed multiple times within the same
-        iteration.
-        """
-        try:
-            self._val = next(self._iter)
-            return self._val
-        except StopIteration as exc:
-            raise NoMoreRecords() from exc
+
+@dataclass
+class ScopeIterator:
+    """An optional iterator that a pyolin program can set (typically via
+    accessing a provided variable), so that the program will continue executing
+    multiple times until the iterator is exhausted."""
+    iterator: Optional[Iterator[Any]]
+    # A name for the scope, for comparison and to display in error messages.
+    name: str
 
 
 class PyolinConfig:
@@ -103,6 +104,7 @@ class PyolinConfig:
     _parser: Optional[AbstractParser] = None
     _parser_frozen: bool = False
     header: Optional[Header] = None
+    _scope_iterator: Optional[ScopeIterator] = None
 
     def __init__(
         self,
@@ -154,6 +156,20 @@ class PyolinConfig:
         self._parser_frozen = True
         return self.parser
 
+    def set_scope(self, scope_iterator: Optional[Iterator[Any]], name: str):
+        """Set the scope of the pyolin program execution.
+
+        The scope can only be set once per pyolin program. When set, pyolin will
+        execute the given program in a loop until the iterator is exhausted.
+        Therefore, the pyolin program and/or the registerer of this scope should
+        ensure that the iterator is advanced on every invocation."""
+        if self._scope_iterator is not None and self._scope_iterator.name != name:
+            raise RuntimeError(
+                f"Cannot change scope from "
+                f"\"{self._scope_iterator.name}\" to \"{name}\""
+            )
+        self._scope_iterator = ScopeIterator(scope_iterator, name)
+
 
 def _execute_internal(
     prog,
@@ -194,38 +210,69 @@ def _execute_internal(
         dataframe = pd.DataFrame(record_seq, columns=header)
         return dataframe.apply(pd.to_numeric, errors="ignore")  # type: ignore
 
-    scope = "undecided"
+    def file_scoped(func):
+        return LazyItem(
+            func, on_accessed=lambda: config.set_scope(None, "file")
+        )
 
-    def set_scope(newscope):
-        nonlocal scope
-        if scope != newscope and scope != "undecided":
-            raise RuntimeError(
-                "Cannot access both record scoped and table scoped variables"
-            )
-        scope = newscope
+    iter_record_seq = ReplayIter(iter(record_seq))
 
-    def table_scoped(func):
-        return LazyItem(func, on_accessed=lambda: set_scope("table"))
+    def access_record_var():
+        config.set_scope(iter_record_seq, "record")
+        try:
+            return iter_record_seq.current_or_first_value()
+        except StopIteration:
+            raise NoMoreRecords
 
-    record_var = RecordScoped(record_seq, on_accessed=lambda: set_scope("record"))
+    def gen_lines():
+        with get_io(input_) as io_stream:
+            for bytearr in gen_split(io_stream, "\n"):
+                yield bytearr.decode('utf-8')
+    iter_line_seq = ReplayIter(gen_lines())
+
+    def access_line_var():
+        config.set_scope(iter_line_seq, "line")
+        try:
+            return iter_line_seq.current_or_first_value()
+        except StopIteration:
+            raise NoMoreRecords
+
+    def json_seq():
+        with get_io(input_) as io_stream:
+            text_stream = TextIOWrapper(io_stream)
+            finder = json_plugin.JsonFinder()
+            while line := text_stream.readline(1024):
+                yield from finder.add_input(line)
+
+    iter_json_seq = ReplayIter(json_seq())
+
+    def access_json():
+        if config._scope_iterator or iter_json_seq.has_multiple_items():
+            # Special case: Don't set scope if there is only one item, so that
+            # the output of a program using `jsonobj` will not present itself as
+            # a sequence.
+            config.set_scope(iter_json_seq, "json")
+        try:
+            return iter_json_seq.current_or_first_value()
+        except StopIteration:
+            raise NoMoreRecords
 
     global_dict = ItemDict(
         {
             # Record scoped
-            "record": record_var,
-            "fields": record_var,
-            "line": Item(lambda: record_var().source),
-            # TODO: Refactor this so that I can make jsonobj "line scoped" (not record scoped), to
-            #   avoid triggering the JSON parser. (JSON parser doesn't give real `.source` values)
-            "jsonobj": LazyItem(lambda: json.loads(get_contents(input_))),
-            # Table scoped
-            "lines": table_scoped(
+            "record": Item(access_record_var),
+            "fields": Item(access_record_var),
+            "line": Item(access_line_var),
+            "jsonobj": Item(access_json),
+            # File scoped
+            "lines": file_scoped(
                 lambda: StreamingSequence(r.source for r in record_seq)
             ),
-            "records": table_scoped(lambda: record_seq),
-            "file": table_scoped(lambda: get_contents(input_)),
-            "contents": table_scoped(lambda: get_contents(input_)),
-            "df": table_scoped(get_dataframe),
+            "jsonobjs": file_scoped(json_seq),
+            "records": file_scoped(lambda: record_seq),
+            "file": file_scoped(lambda: get_contents(input_)),
+            "contents": file_scoped(lambda: get_contents(input_)),
+            "df": file_scoped(get_dataframe),
             # Other
             "filename": input_,
             "_UNDEFINED_": _UNDEFINED_,
@@ -245,15 +292,13 @@ def _execute_internal(
 
     try:
         result = prog.exec(global_dict)
+        if config._scope_iterator is not None and config._scope_iterator.iterator is not None:
+            result = itertools.chain(
+                (result,), (prog.exec(global_dict) for _ in config._scope_iterator.iterator)
+            )
+        return result, config
     except NoMoreRecords:
         return _UNDEFINED_, config
-
-    if scope == "record":
-        result = itertools.chain(
-            (result,), (prog.exec(global_dict) for _ in record_var)
-        )
-
-    return result, config
 
 
 def run(*args, **kwargs):

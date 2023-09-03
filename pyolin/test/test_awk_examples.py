@@ -306,7 +306,7 @@ def test_print_number_of_fields(pyolin):
     1 2 1
     1 3 3 1
     """
-    assert pyolin("len(record), line", input_=in_, output_format="awk") == (
+    assert pyolin("len(record), record.source", input_=in_, output_format="awk") == (
         """\
         1 1
         2 1 1
@@ -950,7 +950,7 @@ def test_print_matching_lines(pyolin):
     Pacers Indiana     48 34 baz123
     """
     assert pyolin(
-        r"line if record[4] == 'abc123'",
+        r"record.source if record[4] == 'abc123'",
         input_=in_,
         output_format="awk",
     ) == (
@@ -975,7 +975,7 @@ def test_print_not_matching_lines(pyolin):
     Pacers Indiana     48 34
     """
     assert pyolin(
-        r"line if len(record) < 5 or record[4] != 'abc123'",
+        r"record.source if len(record) < 5 or record[4] != 'abc123'",
         input_=in_,
         output_format="awk",
     ) == (
@@ -1005,7 +1005,7 @@ def test_field_match_regex(pyolin):
     dir/subdir/subfile.txt False 11 53.0 subfile
     """
     assert pyolin(
-        r"line if re.match(r'^[a-f]', record[4])",
+        r"record.source if re.match(r'^[a-f]', record[4])",
         input_=in_,
         output_format="awk",
     ) == (
@@ -1282,7 +1282,7 @@ def test_delete_blank_lines(pyolin):
     The journey of a thousand miles begins with a single step
     """
     assert pyolin(
-        "line if line.str",
+        "line if line",
         input_=in_,
         output_format="awk",
     ) == (

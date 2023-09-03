@@ -8,7 +8,6 @@ from math import floor
 import io
 import itertools
 from itertools import zip_longest
-import json
 import os
 import re
 import shutil
@@ -361,28 +360,31 @@ class Printer(abc.ABC):
         else:
             return str(value)
 
-    def format_record(self, record) -> List[str]:
+    def format_record(self, record: Any) -> List[Union[str, Field]]:
         """Formats a record, which is a sequence of fields."""
         if isinstance(record, (str, bytes)):
             return [self.format_value(record)]
         elif isinstance(record, collections.abc.Iterable):
             if isinstance(record, dict):
-                record = record.items()
+                return [
+                    Field(self.format_value(v), header=Field(str(k)))
+                    for k, v in record.items()
+                ]
             return [self.format_value(i) for i in record]
         else:
             return [self.format_value(record)]
 
-    def _generate_header(self, first_column) -> Sequence[str]:
+    def _generate_header(self, first_row: Sequence[Any]) -> Sequence[str]:
         header = []
         has_real_header = False
-        for i, column in enumerate(first_column):
+        for i, column in enumerate(first_row):
             header_item = None
             if isinstance(column, Field):
                 if column.header is not None and column.header.str:
                     header_item = column.header
                     has_real_header = True
             if header_item is None:
-                if len(first_column) == 1:
+                if len(first_row) == 1:
                     header_item = "value"
                 else:
                     header_item = str(i)
@@ -411,16 +413,17 @@ class Printer(abc.ABC):
             result = (self.format_record(row) for _, row in result.iterrows())
             return (header, result)
         elif isinstance(result, collections.abc.Iterable):
-            if isinstance(result, dict):
-                result = result.items()
             if isinstance(result, (str, Record, tuple, bytes)):
                 result = (self.format_record(result),)
                 header = header or self._generate_header(result[0])
                 return (header, result)
+            if isinstance(result, dict):
+                header = header or [str(k) for k in result.keys()]
+                result = (result.values(),)
             result = (self.format_record(r) for r in result if r is not _UNDEFINED_)
             result, result_tee = itertools.tee(result)
-            first_column = list(next(result_tee, []))
-            header = header or self._generate_header(first_column)
+            first_row = list(next(result_tee, []))
+            header = header or self._generate_header(first_row)
             return (header, result)
         else:
             header = header or SynthesizedHeader(["value"])

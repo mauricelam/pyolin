@@ -9,7 +9,7 @@ import signal
 import subprocess
 import sys
 import textwrap
-from typing import Optional, Union
+from typing import ClassVar, Dict, Optional, Union
 
 import pytest
 
@@ -23,7 +23,7 @@ class File:
 
     filename: str
 
-    def path(self):
+    def path(self) -> str:
         return os.path.join(os.path.dirname(__file__), self.filename)
 
 

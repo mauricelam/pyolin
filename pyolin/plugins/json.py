@@ -1,7 +1,7 @@
 import collections
 import collections.abc
 import json
-from typing import Any, Generator, Iterable, Optional
+from typing import Any, Generator, Iterable, Optional, Sequence, Union
 import typing
 
 from pyolin.ioformat import (
@@ -172,6 +172,51 @@ class JsonParser(AbstractParser):
             stream.seek(0)
             json_object = json.load(stream)
             yield from self.gen_records_from_json(json_object)
+
+
+JsonValue = Union[str, int, float, dict, list]
+
+
+class JsonFinder:
+    """A class that can take repeated inputs of string and accumulates the string value until a
+    complete JSON value is read, and then returns it. This is used for "streaming" type parsing for
+    a file that contains multiple concatenated JSON values, like the JSON-lines format."""
+    def __init__(self):
+        self._accumulated = ''
+        self._token_stack = []
+
+    def _peek_stack(self) -> Optional[str]:
+        return self._token_stack[-1] if self._token_stack else None
+
+    def add_input(self, s: str) -> Sequence[JsonValue]:
+        parsed_values = []
+        skip_next = False
+        for i, c in enumerate(s):
+            self._accumulated += c
+            if skip_next:
+                skip_next = False
+                continue
+            if c in ('{', '[') and self._peek_stack() != '"':
+                self._token_stack.append(c)
+            elif c == '}' and self._peek_stack() != '"':
+                assert self._token_stack.pop() == '{'
+            elif c == ']' and self._peek_stack() != '"':
+                assert self._token_stack.pop() == '['
+            elif c == '"':
+                if self._peek_stack() == '"':
+                    self._token_stack.pop()
+                else:
+                    self._token_stack.append('"')
+            elif c == '\\':
+                skip_next = True
+            if not self._token_stack:
+                if self._accumulated.strip('\n\r\t '):
+                    parsed_values.append(json.loads(self._accumulated))
+                self._accumulated = ''
+        return parsed_values
+
+    def is_exhausted(self) -> bool:
+        return self._accumulated == ''
 
 
 def register():

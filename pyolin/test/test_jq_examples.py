@@ -214,6 +214,10 @@ def test_output_csv(pyolin):
     )
 
 
+# Note: The dataset is truncated for testing performance. As such, the count (last 3 test cases)
+# values are different from the source lesson.
+
+
 def test_one_row_per_tweet(pyolin):
     """
     Let's create a table with one column with a tweet ID, and a second column
@@ -222,7 +226,7 @@ def test_one_row_per_tweet(pyolin):
     jq '{id: .id, hashtags: .entities.hashtags}'
     """
     output = pyolin(
-        "obj = json.loads(line); {'id': obj['id'], 'hashtags': obj['entities']['hashtags']}",
+        "{'id': jsonobj['id'], 'hashtags': jsonobj['entities']['hashtags']}",
         input_=File("data_jq_example_twitter.jsonl"),
         output_format="jsonl",  # TODO: make automatic printer selection use JSON in this case
     )
@@ -254,10 +258,7 @@ def test_text_of_hashtags(pyolin):
     these large values.
     """
     output = pyolin(
-        (
-            "objs = (json.loads(line) for line in lines);"
-            "{'id': obj['id'], 'hashtags': hashtag['text']} for obj in objs for hashtag in obj['entities']['hashtags']"  # noqa: E501
-        ),
+        "{'id': obj['id'], 'hashtags': hashtag['text']} for obj in jsonobjs for hashtag in obj['entities']['hashtags']",  # noqa: E501
         input_=File("data_jq_example_twitter.jsonl"),
         output_format="jsonl",  # TODO: make automatic printer selection use JSON in this case
     )
@@ -283,10 +284,7 @@ def test_delimiting_with_semicolon(pyolin):
         | {id: .id, hashtags: .hashtags | join(";")}'
     """
     output = pyolin(
-        (
-            "objs = (json.loads(line) for line in lines);"
-            "{'id': obj['id'], 'hashtags': ';'.join(ht['text'] for ht in obj['entities']['hashtags'])} for obj in objs"  # noqa: E501
-        ),
+        "{'id': jsonobj['id'], 'hashtags': ';'.join(ht['text'] for ht in jsonobj['entities']['hashtags'])}",  # noqa: E501
         input_=File("data_jq_example_twitter.jsonl"),
         output_format="jsonl",  # TODO: make automatic printer selection use JSON in this case
     )
@@ -314,10 +312,7 @@ def test_twitter_output_csv(pyolin):
         | @csv'
     """
     output = pyolin(
-        (
-            "objs = (json.loads(line) for line in lines);"
-            "(obj['id'], ';'.join(ht['text'] for ht in obj['entities']['hashtags'])) for obj in objs"  # noqa: E501
-        ),
+        "jsonobj['id'], ';'.join(ht['text'] for ht in jsonobj['entities']['hashtags'])",
         input_=File("data_jq_example_twitter.jsonl"),
         output_format="csv",
     )
@@ -342,10 +337,7 @@ def test_one_row_per_hashtag(pyolin):
         | @csv'
     """
     output = pyolin(
-        (
-            "objs = (json.loads(line) for line in lines);"
-            "(obj['id'], ht['text']) for obj in objs for ht in obj['entities']['hashtags']"
-        ),
+        "(obj['id'], ht['text']) for obj in jsonobjs for ht in obj['entities']['hashtags']",
         input_=File("data_jq_example_twitter.jsonl"),
         output_format="csv",
     )
@@ -370,9 +362,8 @@ def test_group_by_user(pyolin):
     """
     output = pyolin(
         (
-            "objs = (json.loads(line) for line in lines);"
             "d = collections.defaultdict(list);"
-            "[d[obj['user']['id']].append(obj) for obj in objs];"
+            "[d[obj['user']['id']].append(obj) for obj in jsonobjs];"
             "d.values()"
         ),
         input_=File("data_jq_example_twitter.jsonl"),
@@ -411,9 +402,8 @@ def test_create_table_of_users(pyolin):
     """
     output = pyolin(
         (
-            "objs = (json.loads(line) for line in lines);"
             "d = collections.defaultdict(list);"
-            "[d[obj['user']['id']].append(obj) for obj in objs];"
+            "[d[obj['user']['id']].append(obj) for obj in jsonobjs];"
             "(id, tweets[0]['user']['screen_name'], tweets[0]['user']['followers_count'], "
             "';'.join(str(t['id']) for t in tweets)) for id, tweets in d.items()"
         ),
@@ -452,10 +442,7 @@ def test_count_hashtags(pyolin):
       | @csv'
     """
     output = pyolin(
-        (
-            "objs = (json.loads(line) for line in lines);"
-            "collections.Counter(ht['text'] for obj in objs for ht in obj['entities']['hashtags']).items()"  # noqa: E501
-        ),
+        "collections.Counter(ht['text'] for obj in jsonobjs for ht in obj['entities']['hashtags']).items()",  # noqa: E501
         input_=File("data_jq_example_twitter.jsonl"),
         output_format="csv",
     )
@@ -463,16 +450,14 @@ def test_count_hashtags(pyolin):
         output.getvalue(),
         # Expected values are not the same as in the guide, because the group_by order is different.
         """
-        Ferguson,53\r
+        Ferguson,8\r
         USNews,1\r
-        MikeBrown,3\r
-        tcot,2\r
+        MikeBrown,1\r
+        tcot,1\r
         uniteblue,1\r
         teaparty,1\r
         gop,1\r
         PoliceBrutality,1\r
-        StandWithFerguson,1\r
-        HandsUpDontShoot,1\r
         """,
     )
 
@@ -487,26 +472,15 @@ def test_filter_before_counting(pyolin):
     `retweet_count`.
     """
     output = pyolin(
-        (
-            "objs = (json.loads(line) for line in lines);"
-            "collections.Counter(ht['text'] for obj in objs for ht in obj['entities']['hashtags'] if obj['retweet_count'] >= 200).items()"  # noqa: E501
-        ),
+        "collections.Counter(ht['text'] for obj in jsonobjs for ht in obj['entities']['hashtags'] if obj['retweet_count'] >= 200).items()",  # noqa: E501
         input_=File("data_jq_example_twitter.jsonl"),
         output_format="csv",
     )
     assert_startswith(
         output.getvalue(),
         """
-        Ferguson,14\r
+        Ferguson,1\r
         MikeBrown,1\r
-        FergusonShooting,1\r
-        CrimeButNoTime,1\r
-        justiceformikebrown,1\r
-        RIPMikeBrown,1\r
-        OpFerguson,1\r
-        whiteprivilege,1\r
-        vancouver,1\r
-        stl,1\r
         """,
     )
 
@@ -518,9 +492,8 @@ def test_count_total_tweets_per_user(pyolin):
     """
     output = pyolin(
         (
-            "objs = (json.loads(line) for line in lines);"
             "d = collections.defaultdict(list);"
-            "[d[obj['user']['id']].append(obj) for obj in objs];"
+            "[d[obj['user']['id']].append(obj) for obj in jsonobjs];"
             "(id, sum(t['retweet_count'] for t in tweets)) for id, tweets in d.items()"
         ),
         input_=File("data_jq_example_twitter.jsonl"),
@@ -529,6 +502,6 @@ def test_count_total_tweets_per_user(pyolin):
     assert_contains(
         output.getvalue(),
         """
-        356854246,51\r
+        278298244,225\r
         """,
     )

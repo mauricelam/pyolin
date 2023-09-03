@@ -98,9 +98,9 @@ class RecordSequence(StreamingSequence[T], HasHeader):
 class Field(DeferredType):
     """Represents a field in a parsed input data table."""
 
-    def __new__(cls, content, *, header: Optional["Field"]):
+    def __new__(cls, content, *, header: Optional["Field"] = None):
         return super().__new__(cls, content)
 
-    def __init__(self, content, *, header: Optional["Field"]):
+    def __init__(self, content, *, header: Optional["Field"] = None):
         super().__init__(content)
         self.header = header
