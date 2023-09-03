@@ -1,7 +1,8 @@
 import collections
 import collections.abc
+from io import TextIOWrapper
 import json
-from typing import Any, Generator, Iterable, Optional, Sequence, Union
+from typing import Any, Callable, ContextManager, Generator, Iterable, Optional, Sequence, Union
 import typing
 
 from pyolin.ioformat import (
@@ -13,8 +14,17 @@ from pyolin.ioformat import (
     export_printers,
     gen_split,
 )
+from pyolin.core import PluginRegistration, PyolinConfig
 from pyolin.record import Record
-from pyolin.util import _UNDEFINED_, is_list_like, peek_iter
+from pyolin.util import (
+    _UNDEFINED_,
+    Item,
+    LazyItem,
+    NoMoreRecords,
+    ReplayIter,
+    is_list_like,
+    peek_iter,
+)
 
 
 class JsonPrinter(Printer):
@@ -180,9 +190,11 @@ JsonValue = Union[str, int, float, dict, list]
 class JsonFinder:
     """A class that can take repeated inputs of string and accumulates the string value until a
     complete JSON value is read, and then returns it. This is used for "streaming" type parsing for
-    a file that contains multiple concatenated JSON values, like the JSON-lines format."""
+    a file that contains multiple concatenated JSON values, like the JSON-lines format.
+    """
+
     def __init__(self):
-        self._accumulated = ''
+        self._accumulated = ""
         self._token_stack = []
 
     def _peek_stack(self) -> Optional[str]:
@@ -196,29 +208,67 @@ class JsonFinder:
             if skip_next:
                 skip_next = False
                 continue
-            if c in ('{', '[') and self._peek_stack() != '"':
+            if c in ("{", "[") and self._peek_stack() != '"':
                 self._token_stack.append(c)
-            elif c == '}' and self._peek_stack() != '"':
-                assert self._token_stack.pop() == '{'
-            elif c == ']' and self._peek_stack() != '"':
-                assert self._token_stack.pop() == '['
+            elif c == "}" and self._peek_stack() != '"':
+                assert self._token_stack.pop() == "{"
+            elif c == "]" and self._peek_stack() != '"':
+                assert self._token_stack.pop() == "["
             elif c == '"':
                 if self._peek_stack() == '"':
                     self._token_stack.pop()
                 else:
                     self._token_stack.append('"')
-            elif c == '\\':
+            elif c == "\\":
                 skip_next = True
             if not self._token_stack:
-                if self._accumulated.strip('\n\r\t '):
+                if self._accumulated.strip("\n\r\t "):
                     parsed_values.append(json.loads(self._accumulated))
-                self._accumulated = ''
+                self._accumulated = ""
         return parsed_values
 
     def is_exhausted(self) -> bool:
-        return self._accumulated == ''
+        return self._accumulated == ""
 
 
-def register():
+def register(
+    plugin_reg: PluginRegistration,
+    input_stream: Callable[[], ContextManager[typing.BinaryIO]],
+    config: PyolinConfig,
+):
     export_printers(json=JsonPrinter, jsonl=JsonlPrinter)
     export_parsers(json=JsonParser)
+
+    def json_seq():
+        with input_stream() as io_stream:
+            text_stream = TextIOWrapper(io_stream)
+            finder = JsonFinder()
+            while line := text_stream.readline(1024):
+                yield from finder.add_input(line)
+
+    iter_json_seq = None
+
+    def access_json():
+        nonlocal iter_json_seq
+        iter_json_seq = iter_json_seq or ReplayIter(json_seq())
+        if config._scope_iterator or iter_json_seq.has_multiple_items():
+            # Special case: Don't set scope if there is only one item, so that
+            # the output of a program using `jsonobj` will not present itself as
+            # a sequence.
+            config.set_scope(iter_json_seq, "json")
+        try:
+            return iter_json_seq.current_or_first_value()
+        except StopIteration:
+            raise NoMoreRecords
+
+    plugin_reg.register_global(
+        "jsonobj",
+        Item(access_json),
+    )
+    plugin_reg.register_global(
+        "jsonobjs",
+        LazyItem(
+            json_seq,
+            on_accessed=lambda: config.set_scope(None, "file"),
+        ),
+    )

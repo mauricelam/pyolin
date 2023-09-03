@@ -10,6 +10,7 @@ from pyolin.ioformat import (
     export_parsers,
     gen_split,
 )
+from pyolin.core import PluginRegistration
 from pyolin.plugins.json import JsonParser
 from pyolin.record import Record
 from pyolin.util import peek_iter
@@ -67,5 +68,5 @@ class AutoParser(AbstractParser):
             ) from None
 
 
-def register():
+def register(plugin_reg: PluginRegistration, _input_stream, _config):
     export_parsers(auto=AutoParser)
