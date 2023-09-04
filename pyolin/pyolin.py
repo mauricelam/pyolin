@@ -31,7 +31,7 @@ from .ioformat import (
 )
 from .plugins import PLUGINS
 from .util import (
-    LazyItem,
+    CachedItem,
     Item,
     ItemDict,
     ReplayIter,
@@ -101,7 +101,7 @@ def _execute_internal(
         return dataframe.apply(pd.to_numeric, errors="ignore")  # type: ignore
 
     def file_scoped(func):
-        return LazyItem(func, on_accessed=lambda: config.set_scope(None, "file"))
+        return CachedItem(func, on_accessed=lambda: config.set_scope(None, "file"))
 
     iter_record_seq = ReplayIter(iter(record_seq))
 
@@ -109,20 +109,6 @@ def _execute_internal(
         config.set_scope(iter_record_seq, "record")
         try:
             return iter_record_seq.current_or_first_value()
-        except StopIteration:
-            raise NoMoreRecords
-
-    def gen_lines(input_stream: Callable[[], ContextManager[typing.BinaryIO]]):
-        with input_stream() as io_stream:
-            for bytearr in gen_split(io_stream, "\n"):
-                yield bytearr.decode("utf-8")
-
-    iter_line_seq = ReplayIter(gen_lines(input_stream))
-
-    def access_line_var():
-        config.set_scope(iter_line_seq, "line")
-        try:
-            return iter_line_seq.current_or_first_value()
         except StopIteration:
             raise NoMoreRecords
 
@@ -135,17 +121,13 @@ def _execute_internal(
             # Record scoped
             "record": Item(access_record_var),
             "fields": Item(access_record_var),
-            "line": Item(access_line_var),
             # File scoped
-            "lines": file_scoped(
-                lambda: StreamingSequence(r.source for r in record_seq)
-            ),
             "records": file_scoped(lambda: record_seq),
             "file": file_scoped(lambda: get_contents(input_stream)),
             "contents": file_scoped(lambda: get_contents(input_stream)),
             "df": file_scoped(get_dataframe),
             # Other
-            "filename": input_,
+            "filename": input_ if isinstance(input_, str) else None,
             "_UNDEFINED_": _UNDEFINED_,
             "new_printer": new_printer,
             "new_parser": config.new_parser,

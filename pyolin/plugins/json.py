@@ -19,7 +19,7 @@ from pyolin.record import Record
 from pyolin.util import (
     _UNDEFINED_,
     Item,
-    LazyItem,
+    CachedItem,
     NoMoreRecords,
     ReplayIter,
     is_list_like,
@@ -267,7 +267,7 @@ def register(
     )
     plugin_reg.register_global(
         "jsonobjs",
-        LazyItem(
+        CachedItem(
             json_seq,
             on_accessed=lambda: config.set_scope(None, "file"),
         ),

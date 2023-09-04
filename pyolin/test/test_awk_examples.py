@@ -803,7 +803,7 @@ def test_concatenate_five_lines(pyolin):
     """
     in_ = "\n".join(str(i) for i in range(100, 120))
     assert pyolin(
-        r"cfg.printer.field_separator=','; lines[i:i+5] for i in range(0, 20, 5)",
+        r"cfg.printer.field_separator=','; (r.source for r in records[i:i+5]) for i in range(0, 20, 5)",  # noqa: E501
         input_=in_,
         output_format="awk",
     ) == (

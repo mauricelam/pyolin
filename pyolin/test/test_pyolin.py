@@ -1416,9 +1416,7 @@ def test_access_record_and_table(pyolin):
 def test_access_table_and_record(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a = records; b = record[0]; b")
-    assert 'Cannot change scope from "file" to "record"' in str(
-        exc.value.__cause__
-    )
+    assert 'Cannot change scope from "file" to "record"' in str(exc.value.__cause__)
 
 
 def test_empty_record_scoped(pyolin):
@@ -1928,8 +1926,9 @@ def test_contains(pyolin):
     )
 
 
-def test_markdown_output_format(pyolin):
-    for prog, expected in [
+@pytest.mark.parametrize(
+    "prog, expected",
+    [
         (
             "len(records)",
             """\
@@ -1961,7 +1960,7 @@ def test_markdown_output_format(pyolin):
             """,
         ),
         (
-            "lines",
+            "record.source",
             """\
             | value                                 |
             | ------------------------------------- |
@@ -1974,16 +1973,18 @@ def test_markdown_output_format(pyolin):
             | {"color": "black", "value": "#000"}   |
             """,
         ),
-    ]:
-        assert (
-            pyolin(
-                prog,
-                input_=File("data_colors.json"),
-                input_format="json",
-                output_format="markdown",
-            )
-            == expected
+    ],
+)
+def test_markdown_output_format(pyolin, prog, expected):
+    assert (
+        pyolin(
+            prog,
+            input_=File("data_colors.json"),
+            input_format="json",
+            output_format="markdown",
         )
+        == expected
+    )
 
 
 def test_markdown_non_uniform_column_count(pyolin):
@@ -2565,8 +2566,8 @@ def test_manual_load_json_record(pyolin, output_format, expected):
             | magenta | #f0f  |
             | yellow  | #ff0  |
             | black   | #000  |
-            """
-        )
+            """,
+        ),
     ],
 )
 def test_manual_load_json_output(pyolin, output_format, expected):

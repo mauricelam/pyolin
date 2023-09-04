@@ -163,9 +163,10 @@ class Item(Generic[T]):
         return self.func(*arg, **kwargs)
 
 
-class LazyItem(Item[T]):
+class CachedItem(Item[T]):
     """
-    Item for ItemDict that is evaluated on demand.
+    Item for ItemDict that caches its result, such that the given function is
+    called only on the first time the item is accessed.
     """
 
     def __init__(
