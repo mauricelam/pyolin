@@ -23,6 +23,10 @@ class PluginContext:
         """
         Export a parser type for pyolin programs to use. This function is
         intended for plugins to call to register additional parsers.
+
+        Keyword arguments `parsers` should contain a factory function to create
+        new parsers, where the parameters are `(record_separator,
+        field_separator)`.
         """
         PARSERS.update(parsers)
 
