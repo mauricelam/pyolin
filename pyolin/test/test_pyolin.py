@@ -2341,6 +2341,23 @@ def test_record_first(pyolin):
         """
     )
 
+    # Note: Personally I find it usually easier to use table-based with list
+    # comprehension syntax:
+    assert pyolin(
+        'mysum = 0; cfg.header = ("sum", "value");;'
+        "((mysum := mysum + r[2]), r[2]) for r in records"
+    ) == (
+        """\
+        | sum | value |
+        | --- | ----- |
+        | 60  | 60    |
+        | 118 | 58    |
+        | 169 | 51    |
+        | 218 | 49    |
+        | 266 | 48    |
+        """
+    )
+
 
 def test_record_num(pyolin):
     assert (
@@ -2777,6 +2794,4 @@ def test_records_negative_slice_step(pyolin):
 # TODOs:
 # Bash / Zsh autocomplete integration
 # Multiline / interactive mode / ipython integration?
-# Easier to define globals
-# yield support
 # ARGV that provides deferred typing

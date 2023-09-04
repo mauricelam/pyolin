@@ -699,9 +699,19 @@ def test_backslash_newline(pyolin):
         "It is a matter of life and death, \\\na road either to safety or to ruin."
     )
     assert pyolin(
-        # TODO: Make this yield-based method less clunky
-        # r"acc = '';; for line in lines: ((acc := line[:-1]) if line[-1] == '\\' else (yield acc + line)); None",
         r"''.join(line[:-1] if line[-1] == '\\' else f'{line}\n' for line in lines).rstrip('\n')",
+        input_=in_,
+        output_format="awk",
+    ) == (
+        """\
+        The art of war is of vital importance to the State.
+        It is a matter of life and death, a road either to safety or to ruin.
+        """
+    )
+
+    # Alternative yield-based method
+    assert pyolin(
+        r"acc = '';; for line in lines: ((acc := line[:-1]) if line[-1] == '\\' else (yield acc + line))",  # noqa: E501
         input_=in_,
         output_format="awk",
     ) == (
