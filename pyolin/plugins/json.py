@@ -7,6 +7,7 @@ import typing
 
 from pyolin.ioformat import (
     AbstractParser,
+    PrinterConfig,
     SynthesizedHeader,
     Printer,
     UnexpectedDataFormat,
@@ -36,9 +37,10 @@ class JsonPrinter(Printer):
     else:
         Regular json.dumps()"""
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(self, result: Any, config: PrinterConfig) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
+        header = config.header
         if is_list_like(result):
             (peek_row,), result = peek_iter(result, 1)
             if is_list_like(peek_row):
@@ -81,7 +83,7 @@ class JsonlPrinter(Printer):
     else:
         Regular json.dumps()"""
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(self, result: Any, config: PrinterConfig) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
         encoder = _CustomJsonEncoder()
@@ -90,7 +92,7 @@ class JsonlPrinter(Printer):
             (peek_row,), result = peek_iter(result, 1)
             if is_list_like(peek_row):
                 if all(not is_list_like(field) for field in peek_row):
-                    header, table = self.to_table(result, header=header)
+                    header, table = self.to_table(result, header=config.header)
                     if isinstance(header, SynthesizedHeader):
                         gen_json = table
                     else:
@@ -240,6 +242,7 @@ def register(
     export_parsers(json=JsonParser)
 
     def json_seq():
+        config.suggested_printer = 'json'
         with input_stream() as io_stream:
             text_stream = TextIOWrapper(io_stream)
             finder = JsonFinder()

@@ -26,7 +26,6 @@ from .ioformat import (
     PARSERS,
     PRINTERS,
     Printer,
-    gen_split,
     new_printer,
 )
 from .plugins import PLUGINS
@@ -35,7 +34,6 @@ from .util import (
     Item,
     ItemDict,
     ReplayIter,
-    StreamingSequence,
     _UNDEFINED_,
     NoMoreRecords,
 )
@@ -69,15 +67,12 @@ def _execute_internal(
         else:
             yield sys.stdin.buffer
 
-    try:
-        config = PyolinConfig(
-            new_printer(output_format),
-            record_separator,
-            field_separator,
-            input_format,
-        )
-    except KeyError:
-        raise ValueError(f'Unrecognized output format "{output_format}"') from None
+    config = PyolinConfig(
+        output_format,
+        record_separator,
+        field_separator,
+        input_format,
+    )
 
     def gen_records(input_stream: Callable[[], ContextManager[typing.BinaryIO]]):
         with input_stream() as io_stream:
@@ -243,4 +238,4 @@ def _command_line(
         raise RuntimeError(
             f'printer must be an instance of Printer. Found "{printer!r}" instead'
         )
-    printer.print_result(result, header=config.header)
+    printer.print_result(result, config.printer_config())

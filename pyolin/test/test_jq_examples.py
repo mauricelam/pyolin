@@ -228,7 +228,7 @@ def test_one_row_per_tweet(pyolin):
     output = pyolin(
         "{'id': jsonobj['id'], 'hashtags': jsonobj['entities']['hashtags']}",
         input_=File("data_jq_example_twitter.jsonl"),
-        output_format="jsonl",  # TODO: make automatic printer selection use JSON in this case
+        output_format="jsonl",
     )
     assert_startswith(
         output.getvalue(),
@@ -260,7 +260,7 @@ def test_text_of_hashtags(pyolin):
     output = pyolin(
         "{'id': obj['id'], 'hashtags': hashtag['text']} for obj in jsonobjs for hashtag in obj['entities']['hashtags']",  # noqa: E501
         input_=File("data_jq_example_twitter.jsonl"),
-        output_format="jsonl",  # TODO: make automatic printer selection use JSON in this case
+        output_format="jsonl",
     )
     assert_startswith(
         output.getvalue(),
@@ -286,7 +286,7 @@ def test_delimiting_with_semicolon(pyolin):
     output = pyolin(
         "{'id': jsonobj['id'], 'hashtags': ';'.join(ht['text'] for ht in jsonobj['entities']['hashtags'])}",  # noqa: E501
         input_=File("data_jq_example_twitter.jsonl"),
-        output_format="jsonl",  # TODO: make automatic printer selection use JSON in this case
+        output_format="jsonl",
     )
     assert_startswith(
         output.getvalue(),

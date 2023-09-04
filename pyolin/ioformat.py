@@ -4,6 +4,7 @@ import abc
 import collections
 import collections.abc
 import csv
+from dataclasses import dataclass
 from math import floor
 import io
 import itertools
@@ -346,6 +347,12 @@ def create_parser(
         raise ValueError(f"Unknown input format {input_format}") from exc
 
 
+@dataclass
+class PrinterConfig:
+    header: Optional[Header] = None
+    suggested_printer: Optional[str] = None
+
+
 class Printer(abc.ABC):
     """A printer that defines how to turn the result of the pyolin program into output to stdout."""
 
@@ -391,11 +398,11 @@ class Printer(abc.ABC):
             header.append(header_item)
         return header if has_real_header else SynthesizedHeader(header)
 
-    def print_result(self, result: Any, *, header: Optional[Header] = None):
+    def print_result(self, result: Any, config: PrinterConfig):
         """Prints the result out to stdout according to the concrete
         implementation."""
         try:
-            for line in self.gen_result(result, header=header):
+            for line in self.gen_result(result, config=config):
                 print(line, flush=True, end="")
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
@@ -431,7 +438,9 @@ class Printer(abc.ABC):
             return (header, result)
 
     @abc.abstractmethod
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         """Generates a string to be printed to stdout. This string can be a
         partial result that is continued by the next yielded string from this
         generator."""
@@ -451,12 +460,16 @@ class AutoPrinter(Printer):
 
     _printer: Printer
 
-    def _infer_suitable_printer(self, result: Any) -> str:
+    def _infer_suitable_printer(
+        self, result: Any, suggested_printer: Optional[str]
+    ) -> str:
         if isinstance(result, dict):
             return "json"
         if "pandas" in sys.modules:
             if isinstance(result, sys.modules["pandas"].DataFrame):
                 return "markdown"
+        if suggested_printer is not None:
+            return suggested_printer
         if isinstance(result, collections.abc.Iterable) and not isinstance(
             result, (str, Record, tuple, bytes)
         ):
@@ -470,11 +483,13 @@ class AutoPrinter(Printer):
                 return "markdown"
         return "txt"
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         tee_result, result = tee_if_iterable(result)
-        printer_str = self._infer_suitable_printer(tee_result)
+        printer_str = self._infer_suitable_printer(tee_result, config.suggested_printer)
         self._printer = new_printer(printer_str)
-        yield from self._printer.gen_result(result, header=header)
+        yield from self._printer.gen_result(result, config=config)
 
 
 class TxtPrinter(Printer):
@@ -485,10 +500,12 @@ class TxtPrinter(Printer):
         self.record_separator = "\n"
         self.field_separator = " "
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
-        header, table = self.to_table(result, header=header)
+        header, table = self.to_table(result, header=config.header)
         if not isinstance(header, SynthesizedHeader):
             yield self.field_separator.join(header) + self.record_separator
         for record in table:
@@ -504,10 +521,12 @@ class CsvPrinter(Printer):
         self.dialect = dialect
         self.writer = None
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
-        header, table_result = self.to_table(result, header=header)
+        header, table_result = self.to_table(result, header=config.header)
         output = io.StringIO()
         try:
             self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
@@ -612,10 +631,12 @@ class MarkdownPrinter(Printer):
                 break
         return [max(w, 1) for w in widths]
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
-        header, table_result = self.to_table(result, header=header)
+        header, table_result = self.to_table(result, header=config.header)
         table1, table2, table3 = itertools.tee(table_result, 3)
         widths = self._allocate_width(header, itertools.islice(table2, 10))
         row_format = _MarkdownRowFormat(widths)
@@ -632,14 +653,14 @@ class MarkdownPrinter(Printer):
 class ReprPrinter(Printer):
     """Prints the result out using Python's `repr()` function."""
 
-    def gen_result(self, result, *, header=None):
+    def gen_result(self, result: Any, config: PrinterConfig):
         yield repr(result) + "\n"
 
 
 class StrPrinter(Printer):
     """Prints the result out using Python's `str()` function."""
 
-    def gen_result(self, result, *, header=None):
+    def gen_result(self, result: Any, config: PrinterConfig):
         result = str(result)
         if result:
             yield result + "\n"
@@ -649,15 +670,15 @@ class BinaryPrinter(Printer):
     """Writes the result as binary out to stdout. This is typically used when
     redirecting the output to a file or to another program."""
 
-    def gen_result(self, result, *, header=None):
+    def gen_result(self, result: Any, config: PrinterConfig):
         if isinstance(result, str):
             yield bytes(result, "utf-8")
         else:
             yield bytes(result)
 
-    def print_result(self, result, *, header=None):
+    def print_result(self, result: Any, config: PrinterConfig):
         try:
-            for line in self.gen_result(result, header=header):
+            for line in self.gen_result(result, config):
                 sys.stdout.buffer.write(line)
         except BrokenPipeError:
             clean_close_stdout_and_stderr()

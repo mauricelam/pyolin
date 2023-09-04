@@ -2668,6 +2668,22 @@ def test_jsonobj_obj_output(pyolin):
     )
 
 
+def test_json_auto_printer(pyolin):
+    """If jsonobj is used, the auto printer should prefer json output format"""
+    in_ = """\
+        [1, 2, 3]
+        """
+    assert pyolin("jsonobj", input_=in_) == (
+        """\
+        [
+          1,
+          2,
+          3
+        ]
+        """
+    )
+
+
 def test_3d_table(pyolin):
     assert (
         pyolin(

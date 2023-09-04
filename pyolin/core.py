@@ -1,7 +1,6 @@
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Optional
-import typing
-from pyolin.ioformat import AbstractParser, Printer, create_parser
+from typing import Any, Iterator, Optional, Union
+from pyolin.ioformat import AbstractParser, Printer, PrinterConfig, create_parser, new_printer
 from pyolin.record import Header
 from pyolin.util import Item
 
@@ -24,25 +23,37 @@ class ScopeIterator:
     name: str
 
 
+@dataclass
 class PyolinConfig:
     """Configuration of Pyolin, available to the Pyolin program as `cfg`."""
 
+    _printer: Union[str, Printer]
+    _record_separator: str
+    _field_separator: Optional[str]
+    _input_format: str
     _parser: Optional[AbstractParser] = None
     _parser_frozen: bool = False
     header: Optional[Header] = None
-    _scope_iterator: Optional[ScopeIterator] = None
 
-    def __init__(
-        self,
-        printer: Printer,
-        record_separator: str,
-        field_separator: Optional[str],
-        input_format: str,
-    ):
-        self.printer = printer
-        self._record_separator = record_separator
-        self._field_separator = field_separator
-        self._input_format = input_format
+    # Printer config
+    _scope_iterator: Optional[ScopeIterator] = None
+    suggested_printer: Optional[str] = None
+
+    def printer_config(self) -> PrinterConfig:
+        return PrinterConfig(self.header, self.suggested_printer)
+
+    @property
+    def printer(self) -> Printer:
+        if isinstance(self._printer, str):
+            try:
+                self._printer = new_printer(self._printer)
+            except KeyError:
+                raise ValueError(f'Unrecognized output format "{self._printer}"') from None
+        return self._printer
+
+    @printer.setter
+    def printer(self, printer: Printer):
+        self._printer = printer
 
     @property
     def parser(self) -> AbstractParser:
