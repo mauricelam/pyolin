@@ -2,7 +2,16 @@ import collections
 import collections.abc
 from io import TextIOWrapper
 import json
-from typing import Any, Callable, ContextManager, Generator, Iterable, Optional, Sequence, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Generator,
+    Iterable,
+    Optional,
+    Sequence,
+    Union,
+)
 import typing
 
 from pyolin.ioformat import (
@@ -11,11 +20,9 @@ from pyolin.ioformat import (
     SynthesizedHeader,
     Printer,
     UnexpectedDataFormat,
-    export_parsers,
-    export_printers,
     gen_split,
 )
-from pyolin.core import PluginRegistration, PyolinConfig
+from pyolin.core import PluginContext, PyolinConfig
 from pyolin.record import Record
 from pyolin.util import (
     _UNDEFINED_,
@@ -37,7 +44,9 @@ class JsonPrinter(Printer):
     else:
         Regular json.dumps()"""
 
-    def gen_result(self, result: Any, config: PrinterConfig) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
         header = config.header
@@ -83,7 +92,9 @@ class JsonlPrinter(Printer):
     else:
         Regular json.dumps()"""
 
-    def gen_result(self, result: Any, config: PrinterConfig) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
         encoder = _CustomJsonEncoder()
@@ -234,15 +245,15 @@ class JsonFinder:
 
 
 def register(
-    plugin_reg: PluginRegistration,
+    ctx: PluginContext,
     input_stream: Callable[[], ContextManager[typing.BinaryIO]],
     config: PyolinConfig,
 ):
-    export_printers(json=JsonPrinter, jsonl=JsonlPrinter)
-    export_parsers(json=JsonParser)
+    ctx.export_printers(json=JsonPrinter, jsonl=JsonlPrinter)
+    ctx.export_parsers(json=JsonParser)
 
     def json_seq():
-        config.suggested_printer = 'json'
+        config.suggested_printer = "json"
         with input_stream() as io_stream:
             text_stream = TextIOWrapper(io_stream)
             finder = JsonFinder()
@@ -264,13 +275,9 @@ def register(
         except StopIteration:
             raise NoMoreRecords
 
-    plugin_reg.register_global(
-        "jsonobj",
-        Item(access_json),
-    )
-    plugin_reg.register_global(
-        "jsonobjs",
-        CachedItem(
+    ctx.register_globals(
+        jsonobj=Item(access_json),
+        jsonobjs=CachedItem(
             json_seq,
             on_accessed=lambda: config.set_scope(None, "file"),
         ),

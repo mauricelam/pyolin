@@ -19,7 +19,7 @@ from typing import (
 import typing
 from hashbang import command, Argument
 
-from pyolin.core import PluginRegistration, PyolinConfig
+from pyolin.core import PluginContext, PyolinConfig
 
 from .field import DeferredType
 from .ioformat import (
@@ -40,7 +40,7 @@ from .util import (
 from .record import RecordSequence
 from .parser import Prog
 
-PLUGIN_REGISTRATION = PluginRegistration()
+PLUGIN_CONTEXT = PluginContext()
 
 
 def _execute_internal(
@@ -108,11 +108,11 @@ def _execute_internal(
             raise NoMoreRecords
 
     for plugin in PLUGINS:
-        plugin.register(PLUGIN_REGISTRATION, input_stream, config)
+        plugin.register(PLUGIN_CONTEXT, input_stream, config)
 
     global_dict = ItemDict(
         {
-            **PLUGIN_REGISTRATION._globals,
+            **PLUGIN_CONTEXT._globals,
             # Record scoped
             "record": Item(access_record_var),
             "fields": Item(access_record_var),

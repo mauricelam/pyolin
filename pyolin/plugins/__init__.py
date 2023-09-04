@@ -2,7 +2,7 @@
 Each plugin should have a function with the following signature:
 
     def register(
-        plugin_reg: PluginRegistration,
+        ctx: PluginContext,
         input_stream: Callable[[], ContextManager[typing.BinaryIO]],
         config: PyolinConfig,
     )

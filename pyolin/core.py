@@ -1,16 +1,30 @@
 from dataclasses import dataclass
-from typing import Any, Iterator, Optional, Union
-from pyolin.ioformat import AbstractParser, Printer, PrinterConfig, create_parser, new_printer
+from typing import Any, Callable, Iterator, Optional, Union
+from pyolin.ioformat import PARSERS, PRINTERS, AbstractParser, Printer, PrinterConfig, create_parser, new_printer
 from pyolin.record import Header
 from pyolin.util import Item
 
 
-class PluginRegistration:
+class PluginContext:
     def __init__(self):
         self._globals = {}
 
-    def register_global(self, key: str, item: Item):
-        self._globals[key] = item
+    def register_globals(self, **global_vars: Item):
+        self._globals.update(global_vars)
+
+    def export_printers(self, **printers: Callable[[], Printer]):
+        """
+        Export a printer type for pyolin programs to use. This function is
+        intended for plugins to call to register additional printers.
+        """
+        PRINTERS.update(printers)
+
+    def export_parsers(self, **parsers: Callable[[str, Optional[str]], AbstractParser]):
+        """
+        Export a parser type for pyolin programs to use. This function is
+        intended for plugins to call to register additional parsers.
+        """
+        PARSERS.update(parsers)
 
 
 @dataclass

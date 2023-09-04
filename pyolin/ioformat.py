@@ -330,13 +330,6 @@ PARSERS = {
 }
 
 
-def export_parsers(**kwargs: Callable[[str, Optional[str]], AbstractParser]):
-    """Export a parser type for pyolin programs to use. This function is intended for plugins to
-    call to register additional parsers."""
-    for name, parser in kwargs.items():
-        PARSERS[name] = parser
-
-
 def create_parser(
     input_format: str, record_separator: str, field_separator: Optional[str]
 ) -> AbstractParser:
@@ -699,13 +692,6 @@ PRINTERS = {
     "str": StrPrinter,
     "binary": BinaryPrinter,
 }
-
-
-def export_printers(**kwargs: Callable[[], Printer]):
-    """Export a printer type for pyolin programs to use. This function is intended for plugins to
-    call to register additional printers."""
-    for name, printer in kwargs.items():
-        PRINTERS[name] = printer
 
 
 def new_printer(output_format: str) -> Printer:

@@ -7,10 +7,9 @@ from pyolin.ioformat import (
     CsvParser,
     TxtParser,
     UnexpectedDataFormat,
-    export_parsers,
     gen_split,
 )
-from pyolin.core import PluginRegistration
+from pyolin.core import PluginContext
 from pyolin.plugins.json import JsonParser
 from pyolin.record import Record
 from pyolin.util import peek_iter
@@ -68,5 +67,5 @@ class AutoParser(AbstractParser):
             ) from None
 
 
-def register(plugin_reg: PluginRegistration, _input_stream, _config):
-    export_parsers(auto=AutoParser)
+def register(ctx: PluginContext, _input_stream, _config):
+    ctx.export_parsers(auto=AutoParser)

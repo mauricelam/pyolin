@@ -5,13 +5,13 @@ character.
 
 from typing import Callable, ContextManager
 import typing
-from pyolin.core import PluginRegistration, PyolinConfig
+from pyolin.core import PluginContext, PyolinConfig
 from pyolin.ioformat import gen_split
 from pyolin.util import Item, CachedItem, NoMoreRecords, ReplayIter, StreamingSequence
 
 
 def register(
-    plugin_reg: PluginRegistration,
+    ctx: PluginContext,
     input_stream: Callable[[], ContextManager[typing.BinaryIO]],
     config: PyolinConfig,
 ):
@@ -28,12 +28,12 @@ def register(
             return iter_line_seq.current_or_first_value()
         except StopIteration:
             raise NoMoreRecords
-    plugin_reg.register_global("line", Item(_line_var))
 
     def _lines_var():
         config.set_scope(None, "file")
         return StreamingSequence(gen_lines(input_stream))
-    plugin_reg.register_global(
-        "lines",
-        CachedItem(_lines_var),
+
+    ctx.register_globals(
+        line=Item(_line_var),
+        lines=CachedItem(_lines_var),
     )
