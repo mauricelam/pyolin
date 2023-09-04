@@ -2486,6 +2486,20 @@ def test_sys_argv(pyolin):
     )
 
 
+def test_argv(pyolin):
+    """
+    argv should follow the same deferred typing mechanism as record fields.
+    """
+    assert pyolin(
+        "(argv[1], argv[2] + argv[3], argv[4].bool)",
+        extra_args=["testing", "1", "2", "true"],
+    ) == (
+        """\
+        testing 3 True
+        """
+    )
+
+
 @pytest.mark.parametrize(
     "output_format, expected",
     [
@@ -2810,4 +2824,3 @@ def test_records_negative_slice_step(pyolin):
 # TODOs:
 # Bash / Zsh autocomplete integration
 # Multiline / interactive mode / ipython integration?
-# ARGV that provides deferred typing

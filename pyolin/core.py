@@ -1,6 +1,14 @@
 from dataclasses import dataclass
 from typing import Any, Callable, Iterator, Optional, Union
-from pyolin.ioformat import PARSERS, PRINTERS, AbstractParser, Printer, PrinterConfig, create_parser, new_printer
+from pyolin.ioformat import (
+    PARSERS,
+    PRINTERS,
+    AbstractParser,
+    Printer,
+    PrinterConfig,
+    create_parser,
+    new_printer,
+)
 from pyolin.record import Header
 from pyolin.util import Item
 
@@ -36,6 +44,7 @@ class ScopeIterator:
     """An optional iterator that a pyolin program can set (typically via
     accessing a provided variable), so that the program will continue executing
     multiple times until the iterator is exhausted."""
+
     iterator: Optional[Iterator[Any]]
     # A name for the scope, for comparison and to display in error messages.
     name: str
@@ -66,7 +75,9 @@ class PyolinConfig:
             try:
                 self._printer = new_printer(self._printer)
             except KeyError:
-                raise ValueError(f'Unrecognized output format "{self._printer}"') from None
+                raise ValueError(
+                    f'Unrecognized output format "{self._printer}"'
+                ) from None
         return self._printer
 
     @printer.setter
@@ -121,6 +132,6 @@ class PyolinConfig:
         if self._scope_iterator is not None and self._scope_iterator.name != name:
             raise RuntimeError(
                 f"Cannot change scope from "
-                f"\"{self._scope_iterator.name}\" to \"{name}\""
+                f'"{self._scope_iterator.name}" to "{name}"'
             )
         self._scope_iterator = ScopeIterator(scope_iterator, name)
