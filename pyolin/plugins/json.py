@@ -30,6 +30,7 @@ from pyolin.util import (
     CachedItem,
     NoMoreRecords,
     ReplayIter,
+    StreamingSequence,
     is_list_like,
     peek_iter,
 )
@@ -278,7 +279,7 @@ def register(
     ctx.register_globals(
         jsonobj=Item(access_json),
         jsonobjs=CachedItem(
-            json_seq,
+            lambda: StreamingSequence(json_seq()),
             on_accessed=lambda: config.set_scope(None, "file"),
         ),
     )

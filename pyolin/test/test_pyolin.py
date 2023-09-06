@@ -2664,6 +2664,28 @@ def test_jsonobjs_single_line(pyolin):
     )
 
 
+def test_jsonobjs_sequence(pyolin):
+    in_ = """\
+    {"a": 1, "b": 2}
+    {"a": 2, "b": 3}
+    {"a": 3, "b": 4}
+    """
+    assert pyolin(
+        "jsonobjs[0], len(jsonobjs)",
+        input_=in_,
+    ) == (
+        """\
+        [
+          {
+            "a": 1,
+            "b": 2
+          },
+          3
+        ]
+        """
+    )
+
+
 def test_jsonobj_obj_output(pyolin):
     assert pyolin(
         "jsonobj['glossary']['GlossDiv']['GlossList']['GlossEntry']['GlossDef']",
