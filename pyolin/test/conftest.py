@@ -64,11 +64,6 @@ class TextIO(io.TextIOWrapper):
         return self.getvalue()
 
 
-@pytest.fixture
-def input_file_nba():
-    return File("data_nba.txt")
-
-
 @pytest.fixture(name="pyolin")
 def pyolin_prog():
     """A pytest fixture to allow getting the "pyolin" function parameter for
@@ -92,7 +87,7 @@ def pyolin_prog():
     @contextlib.contextmanager
     def pyolin_popen(prog, *, extra_args=(), text=True, **kwargs):
         with subprocess.Popen(
-            [sys.executable, "-m", "pyolin", prog] + extra_args,
+            [sys.executable, "-m", "pyolin", prog] + list(extra_args),
             stdin=kwargs.get("stdin", subprocess.PIPE),
             stdout=kwargs.get("stdout", subprocess.PIPE),
             stderr=kwargs.get("stderr", subprocess.PIPE),

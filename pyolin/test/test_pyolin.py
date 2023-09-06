@@ -2289,8 +2289,8 @@ def test_records_if_undefined(pyolin):
     )
 
 
-def test_gen_records_if_undefined(input_file_nba):
-    assert pyolin.run("records if False", input_=input_file_nba) == _UNDEFINED_
+def test_gen_records_if_undefined():
+    assert pyolin.run("records if False", input_=File("data_nba.txt")) == _UNDEFINED_
 
 
 @pytest.mark.parametrize(
@@ -2389,11 +2389,11 @@ def test_trailing_newline(pyolin):
     )
 
 
-def test_execute_function(input_file_nba):
+def test_execute_function():
     def get_records():
         return records  # type: ignore  # noqa: F821
 
-    assert pyolin.run(get_records, input_=input_file_nba.path()) == [
+    assert pyolin.run(get_records, input_=File("data_nba.txt").path()) == [
         ("Bucks", "Milwaukee", 60, 22, 0.732),
         ("Raptors", "Toronto", 58, 24, 0.707),
         ("76ers", "Philadelphia", 51, 31, 0.622),
@@ -2402,11 +2402,11 @@ def test_execute_function(input_file_nba):
     ]
 
 
-def test_execute_function_record_scoped(input_file_nba):
+def test_execute_function_record_scoped():
     def get_records():
         return record[0]  # type: ignore  # noqa: F821
 
-    assert pyolin.run(get_records, input_=input_file_nba.path()) == [
+    assert pyolin.run(get_records, input_=File("data_nba.txt").path()) == [
         "Bucks",
         "Raptors",
         "76ers",
@@ -2846,4 +2846,3 @@ def test_records_negative_slice_step(pyolin):
 # TODOs:
 # Bash / Zsh autocomplete integration
 # Multiline / interactive mode / ipython integration?
-# Allow installing additional packages while in pipx / virtualenv

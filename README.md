@@ -206,6 +206,10 @@ Prints the result out using the Python built-in `str` function.
 
 Prints the raw binary the result, expected to be bytes or bytearray, to stdout. Typically piped to another command since the output may contain non-printable characters or special escape sequences.
 
+## Working with additional packages inside virtual env
+
+When `pyolin` is installed inside a virtual environment, for example using `pipx`, additional packages can be installed through the shortcut `pyolin pip install <package>`.
+
 ## Motivation for creating Pyolin
 
 Python is a powerful language that is easy to read and write, and it has lots of tools, built-in or libraries that helps with text and data manipulation extremely quickly. However, there are not a lot of usage for Python in the command line in the form of quick one-liner scripts. To start using Python in the command line you have to be somewhat committed in creating a script file.

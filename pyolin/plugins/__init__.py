@@ -7,6 +7,6 @@ Each plugin should have a function with the following signature:
         config: PyolinConfig,
     )
 """
-from . import auto_parser, json, lines, argv
+from . import auto_parser, json, lines, argv, pip
 
-PLUGINS = [auto_parser, json, lines, argv]
+PLUGINS = [auto_parser, json, lines, argv, pip]

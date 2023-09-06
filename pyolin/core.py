@@ -17,7 +17,7 @@ class PluginContext:
     def __init__(self):
         self._globals = {}
 
-    def register_globals(self, **global_vars: Item):
+    def register_globals(self, **global_vars: Union[Item, Any]):
         self._globals.update(global_vars)
 
     def export_printers(self, **printers: Callable[[], Printer]):
