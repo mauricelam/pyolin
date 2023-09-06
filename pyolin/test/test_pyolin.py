@@ -2824,3 +2824,4 @@ def test_records_negative_slice_step(pyolin):
 # TODOs:
 # Bash / Zsh autocomplete integration
 # Multiline / interactive mode / ipython integration?
+# Allow installing additional packages while in pipx / virtualenv

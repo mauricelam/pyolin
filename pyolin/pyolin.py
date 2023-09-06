@@ -194,35 +194,64 @@ def _command_line(
     Example:
         pyolin 'record[0] + record[1] if record[2] > 50'
 
-    In Pyolin, the input file is treated as a table, which consists of many
-    records (lines). Each record is then consisted of many fields (columns).
-    The separator for records and fields are configurable through the
-    --record_separator and --field_separator options.
+    Scope:
+        It is possible for the Pyolin program to run multiple times over an
+        iterable sequence of data, called a scope. `record` is a scope that runs
+        the given program multiple times based on the parser, for example.
 
     Available variables:
-      - Record scoped:
-        record, fields - A tuple of the fields in the current line.
-            Additionally, `record.str` gives the original string of the given
-            line before processing.
-        line – Alias for `record.str`.
-
-        When referencing a variable in record scope, `prog` must not access
-        any other variables in table scope. In this mode, Pyolin iterates through
-        each record from the input file and prints the result of `prog`.
-
-      - Table scoped:
-        records – A sequence of records (as described in "Record scoped"
-            section above).
-        lines – A sequence of lines (as described in "Record scoped" section
-            above).
-        file, contents – Contents of the entire file as a single string.
-        df – Contents of the entire file as a pandas.DataFrame. (Available
+      - Record parsing (for table-like data):
+        - `records` – Parses the input data into a sequence of records according
+            to `cfg.parser`, and generates this `records` sequence. Each
+            `record` is a tuple (often parsed from one line) that consists of
+            many fields (columns). The separator for records and fields are
+            configurable through the `--record_separator` and
+            `--field_separator` options.
+        - `record`, `fields` – A scope that will run the given program
+            iteratively for each record. Additionally, `record.source` gives the
+            original string of the given line before processing.
+      - Line by line
+        - `lines` – A sequence of lines separated by the newline character. For
+            other line separators, use `contents.split(separator)`.
+        - `line` – A scoped version of `lines` that iterates over each line,
+            running the Pyolin program repeatedly.
+      - File scope:
+        - `file`, `contents` – Contents of the entire file as a single string.
+        - `df` – Contents of the entire file as a pandas.DataFrame. (Available
             only if pandas is installed).
+      - JSON scope:
+        - `jsonobjs` – Reads one or more concatenated JSON objects from the
+            input file.
+        - `jsonobj` – Scoped version of `jsonobjs`. Note that if the input data
+            contains only one JSON object, the result will return a single item
+            rather than a sequence. To always return a sequence, use
+            `foo(jsonobj) for jsonobj in jsonobjs`, or to always return a single
+            value, use `jsonobj[0]`.
       - General:
-        filename – The name of the file being processed, possibly None if
+        - `filename` – The name of the file being processed, possibly None if
             reading from stdin.
-        re – The regex module.
-        pd – The pandas module, if installed.
+        - `cfg` – The Pyolin program configuration that can configure various
+            beahviors of the program
+          - `cfg.header` – A tuple that contains the headers of the columns in
+            the output data. This assumes the output format is a table (list of
+            tuples).
+            If `None` (the default) and the header cannot be inferred from the
+            input data, the columns will be numbered from zero.
+          - `cfg.parser` – A parser instance that is used to parse the data. Any
+            changes made to this field must be made before the input file
+            contents are accessed.
+              See the Parsers section for more.
+          - `cfg.printer` – A printer instance that determines the format of the
+            output data.
+              See the Printers section for more.
+        - Common module aliases
+            - `pd` – pandas.
+            - `np` – numpy.
+            - All other modules can be directly referenced by name without
+              explicitly using an import statement.
+
+    Only one scope can be accessed in a Pyolin program. An exception will be
+    raised if multiple scopes are mixed.
     """
     result, config = _execute_internal(
         prog,
