@@ -4,7 +4,7 @@ https://www.pement.org/awk/awk1line.txt. Used as a stress test for how good
 pyolin / Python is at similar tasks."""
 
 import pytest
-from .conftest import File
+from .conftest import File, string_block
 
 
 # FILE SPACING:
@@ -12,39 +12,47 @@ from .conftest import File
 
 def test_double_space_file(pyolin):
     """awk '1;{print ""}'"""
-    in_ = """\
+    in_ = string_block(
+        """
         1
         2
-        3"""
-    assert pyolin(r'record[0] + "\n"', input_=in_, output_format="awk") == (
-        """\
+        3
+        """
+    )
+    assert pyolin(r'record[0] + "\n"', input_=in_, output_format="awk") == string_block(
+        """
         1
 
         2
 
         3
 
+        
         """
     )
 
 
 def test_double_space_file_alt(pyolin):
     """awk 'BEGIN{ORS="\n\n"};1'"""
-    in_ = """\
+    in_ = string_block(
+        """
         1
         2
-        3"""
+        3
+        """
+    )
     assert pyolin(
         r'cfg.printer.record_separator="\n\n"; record[0]',
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         1
 
         2
 
         3
+
 
         """
     )
@@ -58,18 +66,24 @@ def test_double_space_already_blank(pyolin):
     # often treated as non-blank, and thus 'NF' alone will return TRUE.
     awk 'NF{print $0 "\n"}'
     """
-    in_ = """\
+    in_ = string_block(
+        """
         1
         2
 
-        3"""
-    assert pyolin(r'record[0] + "\n" if record', input_=in_, output_format="awk") == (
-        """\
+        3
+        """
+    )
+    assert pyolin(
+        r'record[0] + "\n" if record', input_=in_, output_format="awk"
+    ) == string_block(
+        """
         1
 
         2
 
         3
+
 
         """
     )
@@ -88,13 +102,14 @@ def test_add_line_numbers(pyolin):
         'f"{i+1}\t{r[0]}" for i, r in enumerate(records)',
         input_=File("data_nba.txt"),
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         1\tBucks
         2\tRaptors
         3\t76ers
         4\tCeltics
         5\tPacers
+
         """
     )
 
@@ -116,13 +131,14 @@ def test_add_line_number_printf(pyolin):
         'f"{i+1:5d} : {line}" for i, line in enumerate(lines)',
         input_=File("data_nba.txt"),
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
             1 : Bucks Milwaukee    60 22 0.732
             2 : Raptors Toronto    58 24 0.707
             3 : 76ers Philadelphia 51 31 0.622
             4 : Celtics Boston     49 33 0.598
             5 : Pacers Indiana     48 34 0.585
+
         """
     )
 
@@ -133,21 +149,25 @@ def test_number_lines_if_not_blank(pyolin):
     awk 'NF{$0=++a " :" $0};1'
     awk '{print (NF? ++a " :" :"") $0}'
     """
-    in_ = """\
+    in_ = string_block(
+        """
         1
         2
 
-        3"""
+        3
+        """
+    )
     assert pyolin(
         'i = 0;; f"{(i:=i+1):5d} : {r.str}" if r else r.str for r in records',
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
             1 : 1
             2 : 2
 
             3 : 3
+
         """
     )
 
@@ -157,9 +177,12 @@ def test_count_end_lines(pyolin):
     # count lines (emulates "wc -l")
     awk 'END{print NR}'
     """
-    assert pyolin("len(lines)", input_=File("data_nba.txt"), output_format="awk") == (
-        """\
+    assert pyolin(
+        "len(lines)", input_=File("data_nba.txt"), output_format="awk"
+    ) == string_block(
+        """
         5
+
         """
     )
 
@@ -175,12 +198,13 @@ def test_print_sums(pyolin):
         1 2 1
         1 3 3 1
         """
-    assert pyolin("sum(record)", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin("sum(record)", input_=in_, output_format="awk") == string_block(
+        """
         1
         2
         4
         8
+
         """
     )
 
@@ -200,9 +224,10 @@ def test_print_sum_of_all_rows(pyolin):
         "sum(field for record in records for field in record)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         15
+
         """
     )
 
@@ -222,11 +247,12 @@ def test_absolute_value(pyolin):
         "sum(abs(f) for f in record)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         2
         4
         6
+
         """
     )
 
@@ -246,9 +272,10 @@ def test_total_number_of_fields(pyolin):
         "sum(len(r) for r in records)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         10
+
         """
     )
 
@@ -271,9 +298,10 @@ def test_word_occurence_count(pyolin):
         "sum(1 for line in lines if 'Beth' in line)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         2
+
         """
     )
 
@@ -288,9 +316,10 @@ def test_print_largest(pyolin):
         "max(((r[0], r.str) for r in records), key=lambda i: i[0])",
         input_=File("data_nba.txt"),
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         Raptors Raptors Toronto    58 24 0.707
+
         """
     )
 
@@ -306,12 +335,15 @@ def test_print_number_of_fields(pyolin):
     1 2 1
     1 3 3 1
     """
-    assert pyolin("len(record), record.source", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin(
+        "len(record), record.source", input_=in_, output_format="awk"
+    ) == string_block(
+        """
         1 1
         2 1 1
         3 1 2 1
         4 1 3 3 1
+
         """
     )
 
@@ -321,13 +353,16 @@ def test_print_last_field(pyolin):
     # print the last field of each line
     awk '{ print $NF }'
     """
-    assert pyolin("record[-1]", input_=File("data_nba.txt"), output_format="awk") == (
-        """\
+    assert pyolin(
+        "record[-1]", input_=File("data_nba.txt"), output_format="awk"
+    ) == string_block(
+        """
         0.732
         0.707
         0.622
         0.598
         0.585
+
         """
     )
 
@@ -339,9 +374,10 @@ def test_print_last_field_of_last_line(pyolin):
     """
     assert pyolin(
         "records[-1][-1]", input_=File("data_nba.txt"), output_format="awk"
-    ) == (
-        """\
+    ) == string_block(
+        """
         0.585
+
         """
     )
 
@@ -359,10 +395,13 @@ def test_print_more_than_four_fields(pyolin):
     1 4 6 4 1
     1 5 10 10 5 1
     """
-    assert pyolin("record if len(record) > 4", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin(
+        "record if len(record) > 4", input_=in_, output_format="awk"
+    ) == string_block(
+        """
         1 4 6 4 1
         1 5 10 10 5 1
+
         """
     )
 
@@ -375,9 +414,10 @@ def test_generate_string_repeated(pyolin):
     # create a string of a specific length (e.g., generate 90 x's)
     awk 'BEGIN{while (a++<90) s=s "x"; print s}'
     """
-    assert pyolin("'x' * 90", output_format="awk") == (
-        """\
+    assert pyolin("'x' * 90", output_format="awk") == string_block(
+        """
         xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
         """
     )
 
@@ -390,13 +430,14 @@ def test_insert_string_at_position(pyolin):
     """
     assert pyolin(
         "f'{line[:6]}-----{line[6:]}'", input_=File("data_nba.txt"), output_format="awk"
-    ) == (
-        """\
+    ) == string_block(
+        """
         Bucks -----Milwaukee    60 22 0.732
         Raptor-----s Toronto    58 24 0.707
         76ers -----Philadelphia 51 31 0.622
         Celtic-----s Boston     49 33 0.598
         Pacers----- Indiana     48 34 0.585
+
         """
     )
 
@@ -415,12 +456,15 @@ def test_convert_crlf_to_lf(pyolin):
     1 2 1\r
     1 3 3 1\r
     """
-    assert pyolin(r"line.rstrip('\r')", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin(
+        r"line.rstrip('\r')", input_=in_, output_format="awk"
+    ) == string_block(
+        """
         1
         1 1
         1 2 1
         1 3 3 1
+
         """
     )
 
@@ -436,12 +480,13 @@ def test_convert_lf_to_crlf(pyolin):
     1 2 1
     1 3 3 1
     """
-    assert pyolin(r"line + '\r'", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin(r"line + '\r'", input_=in_, output_format="awk") == string_block(
+        """
         1\r
         1 1\r
         1 2 1\r
         1 3 3 1\r
+
         """
     )
 
@@ -452,18 +497,23 @@ def test_remove_leading_whitespace(pyolin):
     # aligns all text flush left
     awk '{sub(/^[ \t]+/, "")};1'
     """
-    in_ = """\
-       1
-    1 1
-        1 2 1
-    \t1 3 3 1
-    """
-    assert pyolin(r"line.lstrip(' \t')", input_=in_, output_format="awk") == (
-        """\
+    in_ = string_block(
+        """
+           1
+        1 1
+            1 2 1
+        \t1 3 3 1
+        """
+    )
+    assert pyolin(
+        r"line.lstrip(' \t')", input_=in_, output_format="awk"
+    ) == string_block(
+        """
         1
         1 1
         1 2 1
         1 3 3 1
+
         """
     )
 
@@ -479,12 +529,15 @@ def test_remove_trailing_whitespace(pyolin):
     1 2 1 \t   
     1 3 3 1
     """  # noqa: W291
-    assert pyolin(r"line.rstrip(' \t')", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin(
+        r"line.rstrip(' \t')", input_=in_, output_format="awk"
+    ) == string_block(
+        """
         1
         1 1
         1 2 1
         1 3 3 1
+
         """
     )
 
@@ -501,12 +554,15 @@ def test_remove_leading_and_trailing_whitespace(pyolin):
       1 2 1 \t   
       \t1 3 3 1
     """  # noqa: W291
-    assert pyolin(r"line.strip(' \t')", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin(
+        r"line.strip(' \t')", input_=in_, output_format="awk"
+    ) == string_block(
+        """
         1
         1 1
         1 2 1
         1 3 3 1
+
         """
     )
 
@@ -518,13 +574,14 @@ def test_add_indentation(pyolin):
     """
     assert pyolin(
         r"'     ' + line", input_=File("data_nba.txt"), output_format="awk"
-    ) == (
-        """\
+    ) == string_block(
+        """
              Bucks Milwaukee    60 22 0.732
              Raptors Toronto    58 24 0.707
              76ers Philadelphia 51 31 0.622
              Celtics Boston     49 33 0.598
              Pacers Indiana     48 34 0.585
+
         """
     )
 
@@ -536,13 +593,14 @@ def test_right_align(pyolin):
     """
     assert pyolin(
         r"f'{line:>79s}'", input_=File("data_nba.txt"), output_format="awk"
-    ) == (
-        """\
+    ) == string_block(
+        """
                                                          Bucks Milwaukee    60 22 0.732
                                                          Raptors Toronto    58 24 0.707
                                                          76ers Philadelphia 51 31 0.622
                                                          Celtics Boston     49 33 0.598
                                                          Pacers Indiana     48 34 0.585
+
         """
     )
 
@@ -554,13 +612,14 @@ def test_center_align(pyolin):
     """
     assert pyolin(
         r"f'{line:^79s}'", input_=File("data_nba.txt"), output_format="awk"
-    ) == (
-        """\
+    ) == string_block(
+        """
                                 Bucks Milwaukee    60 22 0.732                         
                                 Raptors Toronto    58 24 0.707                         
                                 76ers Philadelphia 51 31 0.622                         
                                 Celtics Boston     49 33 0.598                         
                                 Pacers Indiana     48 34 0.585                         
+
         """  # noqa: W291
     )
 
@@ -574,10 +633,13 @@ def test_string_substitution(pyolin):
     The foolish food fight fooled the football fans
     The foolish fool fell off the footbridge while foozling with his footsie
     """
-    assert pyolin(r"line.replace('foo', 'bar')", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin(
+        r"line.replace('foo', 'bar')", input_=in_, output_format="awk"
+    ) == string_block(
+        """
         The barlish bard fight barled the bartball fans
         The barlish barl fell off the bartbridge while barzling with his bartsie
+
         """
     )
 
@@ -600,10 +662,11 @@ def test_string_substitution_fourth(pyolin):
         "r=itertools.count();re.sub(r'foo', lambda m: 'bar' if next(r) == 3 else m.group(), line)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         The foolish food fight fooled the bartball fans
         The foolish fool fell off the footbridge while barzling with his footsie
+
         """
     )
 
@@ -621,10 +684,11 @@ def test_string_substitution_with_baz(pyolin):
         "line.replace('foo', 'bar') if 'baz' in line else line",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         The foolish food fight fooled the football fans
         The bazooka-wielding barl fell off the bartbridge while barzling with his bartsie
+
         """
     )
 
@@ -642,10 +706,11 @@ def test_string_substitution_without_baz(pyolin):
         "line.replace('foo', 'bar') if 'baz' not in line else line",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         The barlish bard fight barled the bartball fans
         The bazooka-wielding fool fell off the footbridge while foozling with his footsie
+
         """
     )
 
@@ -662,9 +727,10 @@ def test_substitute_multiple_strings(pyolin):
         "re.sub(r'scarlet|ruby|puce', 'red', line)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         The bouquet of flowers was a riot of color, with red roses, red lilies, and red carnations
+
         """
     )
 
@@ -679,11 +745,12 @@ def test_reverse_order_of_lines(pyolin):
     a
     t
     """
-    assert pyolin("lines[::-1]", input_=in_, output_format="awk") == (
-        """\
+    assert pyolin("lines[::-1]", input_=in_, output_format="awk") == string_block(
+        """
         t
         a
         c
+
         """
     )
 
@@ -694,32 +761,45 @@ def test_backslash_newline(pyolin):
     # there are multiple lines ending with backslash...)
     awk '/\\$/ {sub(/\\$/,""); getline t; print $0 t; next}; 1' file*
     """
-    in_ = (
-        "The art of war is of vital \\\nimportance to the State.\n"
-        "It is a matter of life and death, \\\na road either to safety or to ruin."
-    )
+    in_ = r"""The art of war \
+is of vital \
+importance to the State.
+It is a matter of life and death, \
+a road either to safety or to ruin."""
     assert pyolin(
         r"''.join(line[:-1] if line[-1] == '\\' else f'{line}\n' for line in lines).rstrip('\n')",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         The art of war is of vital importance to the State.
         It is a matter of life and death, a road either to safety or to ruin.
+
         """
     )
 
     # Alternative yield-based method
     assert pyolin(
-        r"acc = '';; for line in lines: ((acc := line[:-1]) if line[-1] == '\\' else (yield acc + line))",  # noqa: E501
-        input_=in_,
-        output_format="awk",
-    ) == (
-        """\
-        The art of war is of vital importance to the State.
-        It is a matter of life and death, a road either to safety or to ruin.
-        """
-    )
+            string_block(
+                r"""
+                acc = ''
+                for line in lines:
+                    if line[-1] == '\\':
+                        acc += line[:-1]
+                    else:
+                        yield acc + line
+                        acc = ''
+                """
+            ),
+            input_=in_,
+            output_format="awk",
+        ) == string_block(
+            """
+            The art of war is of vital importance to the State.
+            It is a matter of life and death, a road either to safety or to ruin.
+            
+            """
+        )
 
 
 def test_sort(pyolin):
@@ -736,11 +816,12 @@ def test_sort(pyolin):
         r"sorted(lines)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         bar
         baz
         foo
+
         """
     )
 
@@ -754,13 +835,14 @@ def test_swap_field(pyolin):
         r"(record[1], record[0])",
         input_=File("data_nba.txt"),
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         Milwaukee Bucks
         Toronto Raptors
         Philadelphia 76ers
         Boston Celtics
         Indiana Pacers
+
         """
     )
 
@@ -774,13 +856,14 @@ def test_delete_field(pyolin):
         r"(record[0], *record[2:])",
         input_=File("data_nba.txt"),
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         Bucks 60 22 0.732
         Raptors 58 24 0.707
         76ers 51 31 0.622
         Celtics 49 33 0.598
         Pacers 48 34 0.585
+
         """
     )
 
@@ -794,13 +877,14 @@ def test_print_fields_in_reverse(pyolin):
         r"reversed(record)",
         input_=File("data_nba.txt"),
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         0.732 22 60 Milwaukee Bucks
         0.707 24 58 Toronto Raptors
         0.622 31 51 Philadelphia 76ers
         0.598 33 49 Boston Celtics
         0.585 34 48 Indiana Pacers
+
         """
     )
 
@@ -816,12 +900,13 @@ def test_concatenate_five_lines(pyolin):
         r"cfg.printer.field_separator=','; (r.source for r in records[i:i+5]) for i in range(0, 20, 5)",  # noqa: E501
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         100,101,102,103,104
         105,106,107,108,109
         110,111,112,113,114
         115,116,117,118,119
+
         """
     )
 
@@ -839,8 +924,8 @@ def test_print_first_10_lines(pyolin):
         r"lines[:10]",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         100
         101
         102
@@ -851,6 +936,7 @@ def test_print_first_10_lines(pyolin):
         107
         108
         109
+
         """
     )
 
@@ -865,9 +951,10 @@ def test_print_first_line(pyolin):
         r"lines[0]",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         100
+
         """
     )
 
@@ -882,10 +969,11 @@ def test_print_last_two_lines(pyolin):
         r"lines[-2:]",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         118
         119
+
         """
     )
 
@@ -900,9 +988,10 @@ def test_print_last_line(pyolin):
         r"lines[-1]",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         119
+
         """
     )
 
@@ -920,9 +1009,10 @@ def test_regex_match(pyolin):
         r"line if re.search(r'regex', line)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         of regex matching
+
         """
     )
 
@@ -940,9 +1030,10 @@ def test_regex_not_match(pyolin):
         r"line if not re.search(r'regex', line)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         This is a demo
+
         """
     )
 
@@ -963,9 +1054,10 @@ def test_print_matching_lines(pyolin):
         r"record.source if record[4] == 'abc123'",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         76ers Philadelphia 51 31 abc123
+        
         """
     )
 
@@ -988,12 +1080,13 @@ def test_print_not_matching_lines(pyolin):
         r"record.source if len(record) < 5 or record[4] != 'abc123'",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         Bucks Milwaukee    60 22 foo001
         Raptors Toronto    58 24 bar2
         Celtics Boston     49 33 abc404
         Pacers Indiana     48 34
+
         """
     )
 
@@ -1018,10 +1111,11 @@ def test_field_match_regex(pyolin):
         r"record.source if re.match(r'^[a-f]', record[4])",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         dir/file1.txt False 23 56.0 deadbeef
         dir/subdir True 12 42.0 directory
+
         """
     )
 
@@ -1047,10 +1141,11 @@ def test_print_line_before_match(pyolin):
         ),
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         match on line 1
         76ers Philadelphia 51 31 0.622
+
         """
     )
 
@@ -1074,10 +1169,11 @@ def test_print_line_after_match(pyolin):
         ),
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         Raptors Toronto    58 24 0.707
         Pacers Indiana     48 34 0.585
+        
         """
     )
 
@@ -1097,10 +1193,11 @@ def test_multiple_matches(pyolin):
         "line if all(item in line for item in ('AAA', 'BBB', 'CCC'))",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         CCC BBB AAA
         AAA BBB CCC DDD
+
         """
     )
 
@@ -1120,9 +1217,10 @@ def test_match_in_order(pyolin):
         "line if re.match(r'AAA.*BBB.*CCC', line)",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         AAA BBB CCC DDD
+
         """
     )
 
@@ -1143,10 +1241,11 @@ def test_line_length_greater(pyolin):
         "line if len(line) > 64",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         Ask not what your country can do for you, ask what you can do for your country
         The greatest glory in living lies not in never falling, but in rising every time we fall
+
         """
     )
 
@@ -1167,11 +1266,12 @@ def test_line_length_shorter(pyolin):
         "line if len(line) < 64",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         I have a dream
         The only thing we have to fear is fear itself
         The journey of a thousand miles begins with a single step
+
         """
     )
 
@@ -1196,10 +1296,11 @@ def test_print_from_match_to_end_of_file(pyolin):
         ),
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         The greatest glory in living lies not in never falling, but in rising every time we fall
         The journey of a thousand miles begins with a single step
+
         """
     )
 
@@ -1214,13 +1315,14 @@ def test_print_by_line_number(pyolin):
         "lines[7:12]",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         107
         108
         109
         110
         111
+
         """
     )
 
@@ -1236,9 +1338,10 @@ def test_print_specific_line(pyolin):
         "lines[51]",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         151
+
         """
     )
 
@@ -1264,11 +1367,12 @@ def test_print_between_matches(pyolin):
         ),
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         Ask not what your country can do for you, ask what you can do for your country
         The only thing we have to fear is fear itself
         The greatest glory in living lies not in never falling, but in rising every time we fall
+
         """
     )
 
@@ -1295,13 +1399,14 @@ def test_delete_blank_lines(pyolin):
         "line if line",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         I have a dream
         Ask not what your country can do for you, ask what you can do for your country
         The only thing we have to fear is fear itself
         The greatest glory in living lies not in never falling, but in rising every time we fall
         The journey of a thousand miles begins with a single step
+
         """
     )
 
@@ -1325,8 +1430,8 @@ def test_remove_consecutive_duplicates(pyolin):
         "line for line, next_line in itertools.zip_longest(lines, lines[1:]) if line != next_line",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         3
         0
         6
@@ -1334,6 +1439,7 @@ def test_remove_consecutive_duplicates(pyolin):
         4
         3
         0
+
         """
     )
 
@@ -1358,12 +1464,13 @@ def test_remove_duplicate_lines(pyolin):
         "list(dict.fromkeys(lines))",
         input_=in_,
         output_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         3
         0
         6
         2
         4
+
         """
     )

@@ -55,7 +55,7 @@ class TextIO(io.TextIOWrapper):
 
     def __eq__(self, o):
         if isinstance(o, str):
-            return self.getvalue().__eq__(custom_dedent(o))
+            return self.getvalue().__eq__(o)
         if isinstance(o, bytes):
             return self.getbytes().__eq__(o)
         return self.getvalue().__eq__(o)
@@ -158,21 +158,46 @@ def run_capturing_output(*, errmsg: Optional[str] = None):
                 raise ErrorWithStderr(err.getvalue(), errmsg=errmsg) from exc
 
 
-def custom_dedent(text: str) -> str:
-    """Similar to textwrap.dedent, but only looks at the last line for the
-    prefix, so the remaining lines can still contain leading whitespaces."""
+def removeprefix(text: str, prefix: str) -> str:
+    return text[len(prefix):] if text.startswith(prefix) else text
+
+
+def removesuffix(text: str, suffix: str) -> str:
+    return text[:-len(suffix)] if text.endswith(suffix) else text
+
+def string_block(text: str) -> str:
+    """
+    Similar to textwrap.dedent, but with different logic such that the whitespace
+    can be preserved, with the text looking like this:
+
+    '''
+      This is the text,
+        and whitespace can be preserved
+    '''
+
+    The rules are:
+    1. The block always starts with a new line
+    2. The last line should contain only spaces or tabs. That is our "prefix".
+    3. Each line after the first always starts with the "prefix"
+    4. The prefix is removed from each line, except for lines that are
+       completely empty – those are returned as-is
+    5. The last line should be empty after prefix is removed and is ignored.
+    """
     if not text:
         return text
-    lines = text.split("\n")
-    lines = lines[1:] if not lines[0] else lines
-    num_spaces = len(lines[-1]) - len(lines[-1].lstrip(" \t"))
+    if not text[0] == "\n":
+        raise RuntimeError("string_block should start with \\n")
+    lines = text[1:].split("\n")
+    line_prefix = lines[-1]
+    num_spaces = len(line_prefix)
     for line in lines:
-        assert not line[:num_spaces].lstrip(" \t"), f"Dedent failed on line: {line}"
-    return "\n".join(line[num_spaces:] for line in lines)
+        assert not line or line.startswith(line_prefix), f"Dedent failed on line: {line}"
+    assert not lines[-1][num_spaces:], "Last line should be empty after removing prefix"
+    return "\n".join(line[num_spaces:] for line in lines[:-1])
 
 
 def assert_startswith(output, prefix):
-    prefix = custom_dedent(prefix.lstrip('\n'))
+    prefix = prefix.lstrip('\n')
     assert output.startswith(prefix), "\n".join(
         difflib.unified_diff(
             output[: len(prefix) + 50].split("\n"), prefix.split("\n")
@@ -181,7 +206,7 @@ def assert_startswith(output, prefix):
 
 
 def assert_contains(output, substring):
-    substring = custom_dedent(substring.lstrip('\n'))
+    substring = substring.lstrip('\n')
     assert substring in output, "\n".join(
         difflib.unified_diff(
             output.split("\n"), substring.split("\n")
@@ -191,6 +216,6 @@ def assert_contains(output, substring):
 
 def pytest_assertrepr_compare(op, left, right):
     if isinstance(left, TextIO) or isinstance(right, TextIO) and op == "==":
-        left = custom_dedent(str(left))
-        right = custom_dedent(str(right))
+        left = str(left)
+        right = str(right)
         return list(difflib.unified_diff(left.split("\n"), right.split("\n")))

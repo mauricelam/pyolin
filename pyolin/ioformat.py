@@ -17,7 +17,6 @@ import textwrap
 import typing
 from typing import (
     Any,
-    Callable,
     Generator,
     Iterable,
     List,

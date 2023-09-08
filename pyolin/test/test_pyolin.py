@@ -6,7 +6,6 @@
 
 import os
 from pprint import pformat
-import textwrap
 from unittest import mock
 
 import pytest
@@ -14,7 +13,7 @@ from pyolin import pyolin
 from pyolin.parser import UserError
 from pyolin.util import _UNDEFINED_
 
-from .conftest import ErrorWithStderr, timeout, File
+from .conftest import ErrorWithStderr, string_block, timeout, File
 
 
 def test_lines(pyolin):
@@ -25,24 +24,8 @@ def test_lines(pyolin):
         Celtics Boston     49 33 0.598
         Pacers Indiana     48 34 0.585
         """
-    assert (
-        pyolin("line for line in lines", input_=_in)
-        == """\
-            | value                          |
-            | ------------------------------ |
-            | Bucks Milwaukee    60 22 0.732 |
-            | Raptors Toronto    58 24 0.707 |
-            | 76ers Philadelphia 51 31 0.622 |
-            | Celtics Boston     49 33 0.598 |
-            | Pacers Indiana     48 34 0.585 |
-            """
-    )
-
-
-def test_line(pyolin):
-    assert (
-        pyolin("line")
-        == """\
+    assert pyolin("line for line in lines", input_=_in) == string_block(
+        """
         | value                          |
         | ------------------------------ |
         | Bucks Milwaukee    60 22 0.732 |
@@ -50,14 +33,29 @@ def test_line(pyolin):
         | 76ers Philadelphia 51 31 0.622 |
         | Celtics Boston     49 33 0.598 |
         | Pacers Indiana     48 34 0.585 |
+
+        """
+    )
+
+
+def test_line(pyolin):
+    assert pyolin("line") == string_block(
+        """
+        | value                          |
+        | ------------------------------ |
+        | Bucks Milwaukee    60 22 0.732 |
+        | Raptors Toronto    58 24 0.707 |
+        | 76ers Philadelphia 51 31 0.622 |
+        | Celtics Boston     49 33 0.598 |
+        | Pacers Indiana     48 34 0.585 |
+
         """
     )
 
 
 def test_fields(pyolin):
-    assert (
-        pyolin("fields")
-        == """\
+    assert pyolin("fields") == string_block(
+        """
         | 0       | 1            | 2  | 3  | 4     |
         | ------- | ------------ | -- | -- | ----- |
         | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
@@ -65,59 +63,59 @@ def test_fields(pyolin):
         | 76ers   | Philadelphia | 51 | 31 | 0.622 |
         | Celtics | Boston       | 49 | 33 | 0.598 |
         | Pacers  | Indiana      | 48 | 34 | 0.585 |
+
         """
     )
 
 
 def test_awk_output_format(pyolin):
-    assert (
-        pyolin("fields", output_format="awk")
-        == """\
+    assert pyolin("fields", output_format="awk") == string_block(
+        """
         Bucks Milwaukee 60 22 0.732
         Raptors Toronto 58 24 0.707
         76ers Philadelphia 51 31 0.622
         Celtics Boston 49 33 0.598
         Pacers Indiana 48 34 0.585
+
         """
     )
 
 
 def test_awk_output_format_field_separator(pyolin):
-    assert (
-        pyolin(
-            'cfg.printer.field_separator = ","; fields',
-            output_format="awk",
-        )
-        == """\
+    assert pyolin(
+        'cfg.printer.field_separator = ","; fields',
+        output_format="awk",
+    ) == string_block(
+        """
         Bucks,Milwaukee,60,22,0.732
         Raptors,Toronto,58,24,0.707
         76ers,Philadelphia,51,31,0.622
         Celtics,Boston,49,33,0.598
         Pacers,Indiana,48,34,0.585
+
         """
     )
 
 
 def test_awk_output_format_record_separator(pyolin):
-    assert (
-        pyolin(
-            'cfg.printer.record_separator = ";\\n"; fields',
-            output_format="awk",
-        )
-        == """\
+    assert pyolin(
+        'cfg.printer.record_separator = ";\\n"; fields',
+        output_format="awk",
+    ) == string_block(
+        """
         Bucks Milwaukee 60 22 0.732;
         Raptors Toronto 58 24 0.707;
         76ers Philadelphia 51 31 0.622;
         Celtics Boston 49 33 0.598;
         Pacers Indiana 48 34 0.585;
+
         """
     )
 
 
 def test_reorder_fields(pyolin):
-    assert (
-        pyolin("fields[1], fields[0]")
-        == """\
+    assert pyolin("fields[1], fields[0]") == string_block(
+        """
         | 0            | 1       |
         | ------------ | ------- |
         | Milwaukee    | Bucks   |
@@ -125,60 +123,66 @@ def test_reorder_fields(pyolin):
         | Philadelphia | 76ers   |
         | Boston       | Celtics |
         | Indiana      | Pacers  |
+
         """
     )
 
 
 def test_conditional(pyolin):
-    assert (
-        pyolin('record for record in records if record[1] == "Boston"')
-        == """\
+    assert pyolin(
+        'record for record in records if record[1] == "Boston"'
+    ) == string_block(
+        """
         | 0       | 1      | 2  | 3  | 4     |
         | ------- | ------ | -- | -- | ----- |
         | Celtics | Boston | 49 | 33 | 0.598 |
+
         """
     )
 
 
 def test_number_conversion(pyolin):
-    assert (
-        pyolin("record.source for record in records if record[2] > 50")
-        == """\
+    assert pyolin(
+        "record.source for record in records if record[2] > 50"
+    ) == string_block(
+        """
         | value                          |
         | ------------------------------ |
         | Bucks Milwaukee    60 22 0.732 |
         | Raptors Toronto    58 24 0.707 |
         | 76ers Philadelphia 51 31 0.622 |
+
         """
     )
 
 
 def test_expression_record(pyolin):
-    assert (
-        pyolin("len(records)")
-        == """\
+    assert pyolin("len(records)") == string_block(
+        """
         5
+
         """
     )
 
 
 def test_if_expression(pyolin):
-    assert (
-        pyolin("fields[0] if fields[3] > 30")
-        == """\
+    assert pyolin("fields[0] if fields[3] > 30") == string_block(
+        """
         | value   |
         | ------- |
         | 76ers   |
         | Celtics |
         | Pacers  |
+
         """
     )
 
 
 def test_ternary_explicit(pyolin):
-    assert (
-        pyolin('r[1] if len(r[1]) > 8 else "Name too short" for r in records')
-        == """\
+    assert pyolin(
+        'r[1] if len(r[1]) > 8 else "Name too short" for r in records'
+    ) == string_block(
+        """
         | value          |
         | -------------- |
         | Milwaukee      |
@@ -186,14 +190,14 @@ def test_ternary_explicit(pyolin):
         | Philadelphia   |
         | Name too short |
         | Name too short |
+
         """
     )
 
 
 def test_ternary_implicit(pyolin):
-    assert (
-        pyolin('fields[1] if fields[2] > 50 else "Score too low"')
-        == """\
+    assert pyolin('fields[1] if fields[2] > 50 else "Score too low"') == string_block(
+        """
         | value         |
         | ------------- |
         | Milwaukee     |
@@ -201,23 +205,23 @@ def test_ternary_implicit(pyolin):
         | Philadelphia  |
         | Score too low |
         | Score too low |
+
         """
     )
 
 
 def test_count_condition(pyolin):
-    assert (
-        pyolin("len([r for r in records if r[2] > 50])")
-        == """\
+    assert pyolin("len([r for r in records if r[2] > 50])") == string_block(
+        """
         3
+
         """
     )
 
 
 def test_enumerate(pyolin):
-    assert (
-        pyolin("(i, line) for i, line in enumerate(lines)")
-        == """\
+    assert pyolin("(i, line) for i, line in enumerate(lines)") == string_block(
+        """
         | 0 | 1                              |
         | - | ------------------------------ |
         | 0 | Bucks Milwaukee    60 22 0.732 |
@@ -225,20 +229,21 @@ def test_enumerate(pyolin):
         | 2 | 76ers Philadelphia 51 31 0.622 |
         | 3 | Celtics Boston     49 33 0.598 |
         | 4 | Pacers Indiana     48 34 0.585 |
+
         """
     )
 
 
 def test_skip_none(pyolin):
-    assert (
-        pyolin("[None, 1, 2, 3]")
-        == """\
+    assert pyolin("[None, 1, 2, 3]") == string_block(
+        """
         | value |
         | ----- |
         | None  |
         | 1     |
         | 2     |
         | 3     |
+
         """
     )
 
@@ -247,29 +252,28 @@ def test_singleton_none(pyolin):
     """
     Just a singleton None, not in a sequence, should be printed (maybe?)
     """
-    assert (
-        pyolin("None")
-        == """\
+    assert pyolin("None") == string_block(
+        """
         None
+
         """
     )
 
 
 def test_regex(pyolin):
-    assert (
-        pyolin(r'fields if re.match(r"^\d.*", fields[0])')
-        == """\
+    assert pyolin(r'fields if re.match(r"^\d.*", fields[0])') == string_block(
+        """
         | 0     | 1            | 2  | 3  | 4     |
         | ----- | ------------ | -- | -- | ----- |
         | 76ers | Philadelphia | 51 | 31 | 0.622 |
+
         """
     )
 
 
 def test_addition(pyolin):
-    assert (
-        pyolin("fields[2] + 100")
-        == """\
+    assert pyolin("fields[2] + 100") == string_block(
+        """
         | value |
         | ----- |
         | 160   |
@@ -277,14 +281,14 @@ def test_addition(pyolin):
         | 151   |
         | 149   |
         | 148   |
+
         """
     )
 
 
 def test_radd(pyolin):
-    assert (
-        pyolin("100 + fields[2]")
-        == """\
+    assert pyolin("100 + fields[2]") == string_block(
+        """
         | value |
         | ----- |
         | 160   |
@@ -292,14 +296,14 @@ def test_radd(pyolin):
         | 151   |
         | 149   |
         | 148   |
+
         """
     )
 
 
 def test_field_addition(pyolin):
-    assert (
-        pyolin("fields[2] + fields[3]")
-        == """\
+    assert pyolin("fields[2] + fields[3]") == string_block(
+        """
         | value |
         | ----- |
         | 82    |
@@ -307,14 +311,14 @@ def test_field_addition(pyolin):
         | 82    |
         | 82    |
         | 82    |
+
         """
     )
 
 
 def test_field_concat(pyolin):
-    assert (
-        pyolin("fields[2] + fields[0]")
-        == """\
+    assert pyolin("fields[2] + fields[0]") == string_block(
+        """
         | value     |
         | --------- |
         | 60Bucks   |
@@ -322,14 +326,14 @@ def test_field_concat(pyolin):
         | 5176ers   |
         | 49Celtics |
         | 48Pacers  |
+
         """
     )
 
 
 def test_field_concat_reversed(pyolin):
-    assert (
-        pyolin("fields[0] + fields[2]")
-        == """\
+    assert pyolin("fields[0] + fields[2]") == string_block(
+        """
         | value     |
         | --------- |
         | Bucks60   |
@@ -337,14 +341,14 @@ def test_field_concat_reversed(pyolin):
         | 76ers51   |
         | Celtics49 |
         | Pacers48  |
+
         """
     )
 
 
 def test_string_concat(pyolin):
-    assert (
-        pyolin('fields[0] + "++"')
-        == """\
+    assert pyolin('fields[0] + "++"') == string_block(
+        """
         | value     |
         | --------- |
         | Bucks++   |
@@ -352,39 +356,39 @@ def test_string_concat(pyolin):
         | 76ers++   |
         | Celtics++ |
         | Pacers++  |
+
         """
     )
 
 
 def test_lt(pyolin):
-    assert (
-        pyolin("fields[0] if fields[2] < 51")
-        == """\
+    assert pyolin("fields[0] if fields[2] < 51") == string_block(
+        """
         | value   |
         | ------- |
         | Celtics |
         | Pacers  |
+
         """
     )
 
 
 def test_le(pyolin):
-    assert (
-        pyolin("fields[0] if fields[2] <= 51")
-        == """\
+    assert pyolin("fields[0] if fields[2] <= 51") == string_block(
+        """
         | value   |
         | ------- |
         | 76ers   |
         | Celtics |
         | Pacers  |
+
         """
     )
 
 
 def test_subtraction(pyolin):
-    assert (
-        pyolin("fields[2] - 50")
-        == """\
+    assert pyolin("fields[2] - 50") == string_block(
+        """
         | value |
         | ----- |
         | 10    |
@@ -392,14 +396,14 @@ def test_subtraction(pyolin):
         | 1     |
         | -1    |
         | -2    |
+
         """
     )
 
 
 def test_rsub(pyolin):
-    assert (
-        pyolin("50 - fields[2]")
-        == """\
+    assert pyolin("50 - fields[2]") == string_block(
+        """
         | value |
         | ----- |
         | -10   |
@@ -407,14 +411,14 @@ def test_rsub(pyolin):
         | -1    |
         | 1     |
         | 2     |
+
         """
     )
 
 
 def test_left_shift(pyolin):
-    assert (
-        pyolin("fields[2] << 2")
-        == """\
+    assert pyolin("fields[2] << 2") == string_block(
+        """
         | value |
         | ----- |
         | 240   |
@@ -422,14 +426,14 @@ def test_left_shift(pyolin):
         | 204   |
         | 196   |
         | 192   |
+
         """
     )
 
 
 def test_neg(pyolin):
-    assert (
-        pyolin("(-fields[2])")
-        == """\
+    assert pyolin("(-fields[2])") == string_block(
+        """
         | value |
         | ----- |
         | -60   |
@@ -437,14 +441,14 @@ def test_neg(pyolin):
         | -51   |
         | -49   |
         | -48   |
+
         """
     )
 
 
 def test_round(pyolin):
-    assert (
-        pyolin("round(fields[2], -2)")
-        == """\
+    assert pyolin("round(fields[2], -2)") == string_block(
+        """
         | value |
         | ----- |
         | 100   |
@@ -452,31 +456,32 @@ def test_round(pyolin):
         | 100   |
         | 0     |
         | 0     |
+
         """
     )
 
 
 def test_skip_first_line(pyolin):
-    assert (
-        pyolin("l for l in lines[1:]")
-        == """\
+    assert pyolin("l for l in lines[1:]") == string_block(
+        """
         | value                          |
         | ------------------------------ |
         | Raptors Toronto    58 24 0.707 |
         | 76ers Philadelphia 51 31 0.622 |
         | Celtics Boston     49 33 0.598 |
         | Pacers Indiana     48 34 0.585 |
+
         """
     )
 
 
 def test_and(pyolin):
-    assert (
-        pyolin("record if fields[2] > 50 and fields[3] > 30")
-        == """\
+    assert pyolin("record if fields[2] > 50 and fields[3] > 30") == string_block(
+        """
         | 0     | 1            | 2  | 3  | 4     |
         | ----- | ------------ | -- | -- | ----- |
         | 76ers | Philadelphia | 51 | 31 | 0.622 |
+
         """
     )
 
@@ -484,8 +489,8 @@ def test_and(pyolin):
 def test_add_header(pyolin):
     assert pyolin(
         'cfg.header = ("Team", "City", "Win", "Loss", "Winrate"); records'
-    ) == (
-        """\
+    ) == string_block(
+        """
         | Team    | City         | Win | Loss | Winrate |
         | ------- | ------------ | --- | ---- | ------- |
         | Bucks   | Milwaukee    | 60  | 22   | 0.732   |
@@ -493,48 +498,51 @@ def test_add_header(pyolin):
         | 76ers   | Philadelphia | 51  | 31   | 0.622   |
         | Celtics | Boston       | 49  | 33   | 0.598   |
         | Pacers  | Indiana      | 48  | 34   | 0.585   |
+
         """
     )
 
 
 def test_count_dots(pyolin):
-    assert (
-        pyolin('sum(line.count("0") for line in lines)')
-        == """\
+    assert pyolin('sum(line.count("0") for line in lines)') == string_block(
+        """
         7
+
         """
     )
 
 
 def test_max_score(pyolin):
-    assert (
-        pyolin("max(r[2] for r in records)")
-        == """\
+    assert pyolin("max(r[2] for r in records)") == string_block(
+        """
         60
+
         """
     )
 
 
 def test_contents(pyolin):
-    assert (
-        pyolin("len(contents)")
-        == """\
+    assert pyolin("len(contents)") == string_block(
+        """
         154
+
         """
     )
 
 
 def test_empty_list(pyolin):
-    assert pyolin("[]") == (
-        """\
+    assert pyolin("[]") == string_block(
+        """
+
         """
     )
 
 
 def test_markdown_empty_header(pyolin):
-    assert pyolin("[(), (1,2,3)]", output_format="markdown") == (
-        """\
+    assert pyolin("[(), (1,2,3)]", output_format="markdown") == string_block(
+        """
         | 1 | 2 | 3 |
+
         """
     )
 
@@ -633,18 +641,17 @@ def test_streaming_index_with_auto_parser(pyolin):
 
 
 def test_records_index(pyolin):
-    assert (
-        pyolin("records[1]")
-        == """\
+    assert pyolin("records[1]") == string_block(
+        """
         Raptors Toronto 58 24 0.707
+
         """
     )
 
 
 def test_destructuring(pyolin):
-    assert (
-        pyolin("city for team, city, _, _, _ in records")
-        == """\
+    assert pyolin("city for team, city, _, _, _ in records") == string_block(
+        """
         | value        |
         | ------------ |
         | Milwaukee    |
@@ -652,6 +659,7 @@ def test_destructuring(pyolin):
         | Philadelphia |
         | Boston       |
         | Indiana      |
+
         """
     )
 
@@ -659,8 +667,8 @@ def test_destructuring(pyolin):
 def test_percentage(pyolin):
     assert pyolin(
         "(r[0], round(r[3] / sum(r[3] for r in records), 2)) for r in records"
-    ) == (
-        """\
+    ) == string_block(
+        """
         | 0       | 1    |
         | ------- | ---- |
         | Bucks   | 0.15 |
@@ -668,6 +676,7 @@ def test_percentage(pyolin):
         | 76ers   | 0.22 |
         | Celtics | 0.23 |
         | Pacers  | 0.24 |
+
         """
     )
 
@@ -677,27 +686,29 @@ def test_singleton_tuple(pyolin):
     Tuples are treated as fields in a single record, whereas other iterable
     types are treated as multiple records.
     """
-    assert (
-        pyolin("sum(r[3] for r in records), max(r[3] for r in records)")
-        == """\
+    assert pyolin(
+        "sum(r[3] for r in records), max(r[3] for r in records)"
+    ) == string_block(
+        """
         144 34
+
         """
     )
 
 
 def test_module_import(pyolin):
-    assert (
-        pyolin(
-            'record[0] if fnmatch.fnmatch(record[0], "*.txt")',
-            input_=File("data_files.txt"),
-        )
-        == """\
+    assert pyolin(
+        'record[0] if fnmatch.fnmatch(record[0], "*.txt")',
+        input_=File("data_files.txt"),
+    ) == string_block(
+        """
         | value                  |
         | ---------------------- |
         | dir/file.txt           |
         | dir/file1.txt          |
         | dir/fileb.txt          |
         | dir/subdir/subfile.txt |
+
         """
     )
 
@@ -705,8 +716,8 @@ def test_module_import(pyolin):
 def test_record_variables(pyolin):
     assert pyolin(
         "type(record).__name__, type(record.source).__name__, type(fields).__name__"
-    ) == (
-        """\
+    ) == string_block(
+        """
         | 0      | 1            | 2      |
         | ------ | ------------ | ------ |
         | Record | DeferredType | Record |
@@ -714,29 +725,30 @@ def test_record_variables(pyolin):
         | Record | DeferredType | Record |
         | Record | DeferredType | Record |
         | Record | DeferredType | Record |
+
         """
     )
 
 
 def test_file_variables(pyolin):
-    assert (
-        pyolin(
-            "type(lines).__name__, type(records).__name__, "
-            "type(file).__name__, type(contents).__name__"
-        )
-        == """\
+    assert pyolin(
+        "type(lines).__name__, type(records).__name__, "
+        "type(file).__name__, type(contents).__name__"
+    ) == string_block(
+        """
         StreamingSequence RecordSequence DeferredType DeferredType
+
         """
     )
 
 
 def test_boolean(pyolin):
-    assert (
-        pyolin("record[0].bool, record[1].bool", input_=b"0 1")
-        == """\
+    assert pyolin("record[0].bool, record[1].bool", input_=b"0 1") == string_block(
+        """
         | 0     | 1    |
         | ----- | ---- |
         | False | True |
+
         """
     )
 
@@ -744,52 +756,53 @@ def test_boolean(pyolin):
 def test_awk_header_detection(pyolin):
     assert pyolin(
         "record if record[1].bool", input_=File("data_files_with_header.txt")
-    ) == (
-        """\
+    ) == string_block(
+        """
         | Path       | IsDir | Size | Score |
         | ---------- | ----- | ---- | ----- |
         | dir        | True  | 30   | 40.0  |
         | dir/subdir | True  | 12   | 42.0  |
+
         """
     )
 
 
 def test_awk_output_with_header(pyolin):
-    assert (
-        pyolin(
-            "record if record[1].bool",
-            input_=File("data_files_with_header.txt"),
-            output_format="awk",
-        )
-        == """\
+    assert pyolin(
+        "record if record[1].bool",
+        input_=File("data_files_with_header.txt"),
+        output_format="awk",
+    ) == string_block(
+        """
         Path IsDir Size Score
         dir True 30 40.0
         dir/subdir True 12 42.0
+
         """
     )
 
 
 def test_filename(pyolin):
-    assert (
-        pyolin("filename", input_=File("data_files.txt"))
-        == f"""\
+    assert pyolin("filename", input_=File("data_files.txt")) == string_block(
+        f"""
         {os.path.dirname(__file__)}/data_files.txt
+
         """
     )
 
 
 def test_bytes(pyolin):
-    assert (
-        pyolin('b"hello"')
-        == """\
+    assert pyolin('b"hello"') == string_block(
+        """
         hello
+
         """
     )
 
 
 def test_reversed(pyolin):
-    assert pyolin("reversed(lines)") == (
-        """\
+    assert pyolin("reversed(lines)") == string_block(
+        """
         | value                          |
         | ------------------------------ |
         | Pacers Indiana     48 34 0.585 |
@@ -797,21 +810,23 @@ def test_reversed(pyolin):
         | 76ers Philadelphia 51 31 0.622 |
         | Raptors Toronto    58 24 0.707 |
         | Bucks Milwaukee    60 22 0.732 |
+
         """
     )
 
 
 def test_in_operator(pyolin):
-    assert pyolin('"Raptors Toronto    58 24 0.707" in lines') == (
-        """\
+    assert pyolin('"Raptors Toronto    58 24 0.707" in lines') == string_block(
+        """
         True
+
         """
     )
 
 
 def test_url_quote(pyolin):
-    assert pyolin("urllib.parse.quote(line)") == (
-        """\
+    assert pyolin("urllib.parse.quote(line)") == string_block(
+        """
         | value                                          |
         | ---------------------------------------------- |
         | Bucks%20Milwaukee%20%20%20%2060%2022%200.732   |
@@ -819,17 +834,17 @@ def test_url_quote(pyolin):
         | 76ers%20Philadelphia%2051%2031%200.622         |
         | Celtics%20Boston%20%20%20%20%2049%2033%200.598 |
         | Pacers%20Indiana%20%20%20%20%2048%2034%200.585 |
+
         """
     )
 
 
 def test_fields_equal(pyolin):
-    assert (
-        pyolin(
-            "fields[2], fields[3], fields[2] == fields[3]",
-            input_=File("data_files.txt"),
-        )
-        == """\
+    assert pyolin(
+        "fields[2], fields[3], fields[2] == fields[3]",
+        input_=File("data_files.txt"),
+    ) == string_block(
+        """
         | 0  | 1    | 2     |
         | -- | ---- | ----- |
         | 30 | 40.0 | False |
@@ -840,17 +855,17 @@ def test_fields_equal(pyolin):
         | 44 | 16.0 | False |
         | 12 | 42.0 | False |
         | 11 | 53.0 | False |
+
         """
     )
 
 
 def test_fields_comparison(pyolin):
-    assert (
-        pyolin(
-            "fields[2], fields[3], fields[2] >= fields[3]",
-            input_=File("data_files.txt"),
-        )
-        == """\
+    assert pyolin(
+        "fields[2], fields[3], fields[2] >= fields[3]",
+        input_=File("data_files.txt"),
+    ) == string_block(
+        """
         | 0  | 1    | 2     |
         | -- | ---- | ----- |
         | 30 | 40.0 | False |
@@ -861,14 +876,14 @@ def test_fields_comparison(pyolin):
         | 44 | 16.0 | True  |
         | 12 | 42.0 | False |
         | 11 | 53.0 | False |
+
         """
     )
 
 
 def test_multiplication(pyolin):
-    assert (
-        pyolin("fields[3] * 10")
-        == """\
+    assert pyolin("fields[3] * 10") == string_block(
+        """
         | value |
         | ----- |
         | 220   |
@@ -876,14 +891,14 @@ def test_multiplication(pyolin):
         | 310   |
         | 330   |
         | 340   |
+
         """
     )
 
 
 def test_fields_multiplication(pyolin):
-    assert (
-        pyolin("fields[3] * fields[2]")
-        == """\
+    assert pyolin("fields[3] * fields[2]") == string_block(
+        """
         | value |
         | ----- |
         | 1320  |
@@ -891,14 +906,14 @@ def test_fields_multiplication(pyolin):
         | 1581  |
         | 1617  |
         | 1632  |
+
         """
     )
 
 
 def test_string_multiplication(pyolin):
-    assert (
-        pyolin("fields[0] * 2")
-        == """\
+    assert pyolin("fields[0] * 2") == string_block(
+        """
         | value          |
         | -------------- |
         | BucksBucks     |
@@ -906,14 +921,14 @@ def test_string_multiplication(pyolin):
         | 76ers76ers     |
         | CelticsCeltics |
         | PacersPacers   |
+
         """
     )
 
 
 def test_pandas_dataframe(pyolin):
-    assert (
-        pyolin("df")
-        == """\
+    assert pyolin("df") == string_block(
+        """
         | 0       | 1            | 2  | 3  | 4     |
         | ------- | ------------ | -- | -- | ----- |
         | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
@@ -921,14 +936,14 @@ def test_pandas_dataframe(pyolin):
         | 76ers   | Philadelphia | 51 | 31 | 0.622 |
         | Celtics | Boston       | 49 | 33 | 0.598 |
         | Pacers  | Indiana      | 48 | 34 | 0.585 |
+
         """
     )
 
 
 def test_pandas_dtypes(pyolin):
-    assert (
-        pyolin("df.dtypes")
-        == """\
+    assert pyolin("df.dtypes") == string_block(
+        """
         | value   |
         | ------- |
         | object  |
@@ -936,14 +951,14 @@ def test_pandas_dtypes(pyolin):
         | int64   |
         | int64   |
         | float64 |
+
         """
     )
 
 
 def test_panda_numeric_operations(pyolin):
-    assert (
-        pyolin("df[2] * 2")
-        == """\
+    assert pyolin("df[2] * 2") == string_block(
+        """
         | value |
         | ----- |
         | 120   |
@@ -951,14 +966,14 @@ def test_panda_numeric_operations(pyolin):
         | 102   |
         | 98    |
         | 96    |
+
         """
     )
 
 
 def test_numpy_numeric_operations(pyolin):
-    assert (
-        pyolin("np.power(df[2], 2)")
-        == """\
+    assert pyolin("np.power(df[2], 2)") == string_block(
+        """
         | value |
         | ----- |
         | 3600  |
@@ -966,6 +981,7 @@ def test_numpy_numeric_operations(pyolin):
         | 2601  |
         | 2401  |
         | 2304  |
+
         """
     )
 
@@ -975,8 +991,8 @@ def test_field_separator(pyolin):
         "record",
         input_=File("data_grades_simple_csv.csv"),
         field_separator=r",",
-    ) == (
-        """\
+    ) == string_block(
+        """
         | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
         | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
         | Alfalfa   | Aloysius   | 123-45-6789 | 40.0 | 90.0 | 100.0 | 83.0 | 49.0 | D- |
@@ -986,6 +1002,7 @@ def test_field_separator(pyolin):
         | Franklin  | Benny      | 234-56-2890 | 50.0 | 1.0  | 90.0  | 80.0 | 90.0 | B- |
         | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
         | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
+
         """  # noqa: E501
     )
 
@@ -996,8 +1013,8 @@ def test_field_separator_regex(pyolin):
         input_=File("data_grades_simple_csv.csv"),
         field_separator=r"[\.,]",
         input_format="awk",
-    ) == (
-        """\
+    ) == string_block(
+        """
         | 0         | 1          | 2           | 3  | 4 | 5  | 6 | 7   | 8 | 9  | 10 | 11 | 12 | 13 |
         | --------- | ---------- | ----------- | -- | - | -- | - | --- | - | -- | -- | -- | -- | -- |
         | Alfalfa   | Aloysius   | 123-45-6789 | 40 | 0 | 90 | 0 | 100 | 0 | 83 | 0  | 49 | 0  | D- |
@@ -1007,18 +1024,18 @@ def test_field_separator_regex(pyolin):
         | Franklin  | Benny      | 234-56-2890 | 50 | 0 | 1  | 0 | 90  | 0 | 80 | 0  | 90 | 0  | B- |
         | George    | Boy        | 345-67-3901 | 40 | 0 | 1  | 0 | 11  | 0 | -1 | 0  | 4  | 0  | B  |
         | Heffalump | Harvey     | 632-79-9439 | 30 | 0 | 1  | 0 | 20  | 0 | 30 | 0  | 40 | 0  | C  |
+
         """  # noqa: E501
     )
 
 
 def test_record_separator(pyolin):
-    assert (
-        pyolin(
-            "record",
-            input_=File("data_onerow.csv"),
-            record_separator=r",",
-        )
-        == """\
+    assert pyolin(
+        "record",
+        input_=File("data_onerow.csv"),
+        record_separator=r",",
+    ) == string_block(
+        """
         | value     |
         | --------- |
         | JET       |
@@ -1035,18 +1052,18 @@ def test_record_separator(pyolin):
         | 1         |
         | 0         |
         | 0         |
+
         """
     )
 
 
 def test_record_separator_multiple_chars(pyolin):
-    assert (
-        pyolin(
-            "cfg.parser.has_header=False; record",
-            input_=File("data_onerow.csv"),
-            record_separator=r",2",
-        )
-        == """\
+    assert pyolin(
+        "cfg.parser.has_header=False; record",
+        input_=File("data_onerow.csv"),
+        record_separator=r",2",
+    ) == string_block(
+        """
         | value    |
         | -------- |
         | JET      |
@@ -1054,18 +1071,18 @@ def test_record_separator_multiple_chars(pyolin):
         | 0001006  | 53521 | 1.000E+01 | NBIC | HSELM | TRANS |
         | .000E+00 | 1.000E+00 |
         |          | 1 | 0 | 0 |
+
         """
     )
 
 
 def test_record_separator_regex(pyolin):
-    assert (
-        pyolin(
-            "record",
-            input_=File("data_onerow.csv"),
-            record_separator=r"[,.]",
-        )
-        == """\
+    assert pyolin(
+        "record",
+        input_=File("data_onerow.csv"),
+        record_separator=r"[,.]",
+    ) == string_block(
+        """
         | value    |
         | -------- |
         | JET      |
@@ -1085,39 +1102,39 @@ def test_record_separator_regex(pyolin):
         | 1        |
         | 0        |
         | 0        |
+
         """
     )
 
 
 def test_simple_csv(pyolin):
-    assert (
-        pyolin(
-            "df[[0, 1, 2]]",
-            input_=File("data_grades_simple_csv.csv"),
-            input_format="csv",
-        )
-        == """\
-        | 0         | 1          | 2           |
-        | --------- | ---------- | ----------- |
-        | Alfalfa   | Aloysius   | 123-45-6789 |
-        | Alfred    | University | 123-12-1234 |
-        | Gerty     | Gramma     | 567-89-0123 |
-        | Android   | Electric   | 087-65-4321 |
-        | Franklin  | Benny      | 234-56-2890 |
-        | George    | Boy        | 345-67-3901 |
-        | Heffalump | Harvey     | 632-79-9439 |
+    assert pyolin(
+        "df[[0, 1, 2]]",
+        input_=File("data_grades_simple_csv.csv"),
+        input_format="csv",
+    ) == string_block(
         """
+            | 0         | 1          | 2           |
+            | --------- | ---------- | ----------- |
+            | Alfalfa   | Aloysius   | 123-45-6789 |
+            | Alfred    | University | 123-12-1234 |
+            | Gerty     | Gramma     | 567-89-0123 |
+            | Android   | Electric   | 087-65-4321 |
+            | Franklin  | Benny      | 234-56-2890 |
+            | George    | Boy        | 345-67-3901 |
+            | Heffalump | Harvey     | 632-79-9439 |
+
+            """
     )
 
 
 def test_quoted_csv(pyolin):
-    assert (
-        pyolin(
-            "record[0]",
-            input_=File("data_news_decline.csv"),
-            input_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "record[0]",
+        input_=File("data_news_decline.csv"),
+        input_format="csv",
+    ) == string_block(
+        """
         | value            |
         | ---------------- |
         | 60 Minutes       |
@@ -1126,6 +1143,7 @@ def test_quoted_csv(pyolin):
         | Nightline        |
         | Dateline Friday  |
         | Dateline Sunday  |
+
         """
     )
 
@@ -1136,25 +1154,25 @@ def test_empty_record(pyolin):
 
     something
     """
-    assert pyolin("bool(record)", input_=in_) == (
-        """\
+    assert pyolin("bool(record)", input_=in_) == string_block(
+        """
         | value |
         | ----- |
         | True  |
         | False |
         | True  |
+
         """
     )
 
 
 def test_quoted_csv_str(pyolin):
-    assert (
-        pyolin(
-            "record.str",
-            input_=File("data_news_decline.csv"),
-            input_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "record.str",
+        input_=File("data_news_decline.csv"),
+        input_format="csv",
+    ) == string_block(
+        """
         | value                             |
         | --------------------------------- |
         | "60 Minutes",       7.6, 7.4, 7.3 |
@@ -1163,18 +1181,18 @@ def test_quoted_csv_str(pyolin):
         | "Nightline",        2.7, 2.6, 2.7 |
         | "Dateline Friday",  4.1, 4.1, 3.9 |
         | "Dateline Sunday",  3.5, 3.2, 3.1 |
+
         """
     )
 
 
 def test_auto_csv(pyolin):
-    assert (
-        pyolin(
-            "df[[0,1,2]]",
-            input_=File("data_addresses.csv"),
-            input_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "df[[0,1,2]]",
+        input_=File("data_addresses.csv"),
+        input_format="csv",
+    ) == string_block(
+        """
         | 0                     | 1        | 2                                |
         | --------------------- | -------- | -------------------------------- |
         | John                  | Doe      | 120 jefferson st.                |
@@ -1183,18 +1201,18 @@ def test_auto_csv(pyolin):
         | Stephen               | Tyler    | 7452 Terrace "At the Plaza" road |
         |                       | Blankman |                                  |
         | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
+
         """
     )
 
 
 def test_csv_excel(pyolin):
-    assert (
-        pyolin(
-            "df[[0,1,2]]",
-            input_=File("data_addresses.csv"),
-            input_format="csv_excel",
-        )
-        == """\
+    assert pyolin(
+        "df[[0,1,2]]",
+        input_=File("data_addresses.csv"),
+        input_format="csv_excel",
+    ) == string_block(
+        """
         | 0                     | 1        | 2                                |
         | --------------------- | -------- | -------------------------------- |
         | John                  | Doe      | 120 jefferson st.                |
@@ -1203,18 +1221,18 @@ def test_csv_excel(pyolin):
         | Stephen               | Tyler    | 7452 Terrace "At the Plaza" road |
         |                       | Blankman |                                  |
         | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              |
+
         """
     )
 
 
 def test_csv_unix(pyolin):
-    assert (
-        pyolin(
-            '"|".join((record[0], record[1], record[2]))',
-            input_=File("data_addresses_unix.csv"),
-            input_format="csv",
-        )
-        == """\
+    assert pyolin(
+        '"|".join((record[0], record[1], record[2]))',
+        input_=File("data_addresses_unix.csv"),
+        input_format="csv",
+    ) == string_block(
+        """
         | value                                          |
         | ---------------------------------------------- |
         | John|Doe|120 jefferson st.                     |
@@ -1223,6 +1241,7 @@ def test_csv_unix(pyolin):
         | Stephen|Tyler|7452 Terrace "At the Plaza" road |
         | |Blankman|                                     |
         | Joan "the bone", Anne|Jet|9th, at Terrace plc  |
+
         """
     )
 
@@ -1233,8 +1252,8 @@ def test_quoted_tsv(pyolin):
         input_=File("data_news_decline.tsv"),
         input_format="csv",
         field_separator="\t",
-    ) == (
-        """\
+    ) == string_block(
+        """
         | 0                | 1   |
         | ---------------- | --- |
         | 60 Minutes       | 7.4 |
@@ -1243,14 +1262,14 @@ def test_quoted_tsv(pyolin):
         | Nightline        | 2.6 |
         | Dateline Friday  | 4.1 |
         | Dateline Sunday  | 3.2 |
+
         """
     )
 
 
 def test_statement(pyolin):
-    assert (
-        pyolin("a = record[2]; b = 1; a + b")
-        == """\
+    assert pyolin("a = record[2]; b = 1; a + b") == string_block(
+        """
         | value |
         | ----- |
         | 61    |
@@ -1258,15 +1277,16 @@ def test_statement(pyolin):
         | 52    |
         | 50    |
         | 49    |
+
         """
     )
 
 
 def test_statement_table(pyolin):
-    assert (
-        pyolin("a = len(records); b = 2; a * b")
-        == """\
+    assert pyolin("a = len(records); b = 2; a * b") == string_block(
+        """
         10
+
         """
     )
 
@@ -1274,17 +1294,21 @@ def test_statement_table(pyolin):
 def test_input_too_long(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("records[0]", input_=b"t" * 4001)
-    assert str(exc.value.__cause__.__cause__) == textwrap.dedent(  # type: ignore
-        """\
-        Unable to detect input format. Try specifying the input type with --input_format"""
+    assert str(exc.value.__cause__.__cause__) == string_block(  # type: ignore
+        """
+        Unable to detect input format. Try specifying the input type with --input_format
+        """
     )
 
 
 def test_input_long_but_broken_into_lines(pyolin):
-    assert pyolin("records[0]", input_=b"t" * 2000 + b"\n" + b"x" * 3000) == (
-        f"""\
+    assert pyolin(
+        "records[0]", input_=b"t" * 2000 + b"\n" + b"x" * 3000
+    ) == string_block(
+        f"""
         { "t" * 2000 }
         { "x" * 3000 }
+
         """
     )
 
@@ -1292,33 +1316,34 @@ def test_input_long_but_broken_into_lines(pyolin):
 def test_syntax_error(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a..x")
-    assert str(exc.value.__cause__) == textwrap.dedent(
-        """\
+    assert str(exc.value.__cause__) == string_block(
+        """
         Invalid syntax:
           a..x
-            ^"""
+            ^
+        """
     )
 
 
 def test_syntax_error_in_statement(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("a..x; a+1")
-    assert str(exc.value.__cause__) == textwrap.dedent(
-        """\
+    assert str(exc.value.__cause__) == string_block(
+        """
         Invalid syntax:
           a..x
-            ^"""
+            ^
+        """
     )
 
 
 def test_header_detection(pyolin):
-    assert (
-        pyolin(
-            'df[["Last name", "SSN", "Final"]]',
-            input_=File("data_grades_with_header.csv"),
-            input_format="csv",
-        )
-        == """\
+    assert pyolin(
+        'df[["Last name", "SSN", "Final"]]',
+        input_=File("data_grades_with_header.csv"),
+        input_format="csv",
+    ) == string_block(
+        """
         | Last name | SSN         | Final |
         | --------- | ----------- | ----- |
         | Alfalfa   | 123-45-6789 | 49    |
@@ -1328,6 +1353,7 @@ def test_header_detection(pyolin):
         | Franklin  | 234-56-2890 | 90    |
         | George    | 345-67-3901 | 4     |
         | Heffalump | 632-79-9439 | 40    |
+
         """
     )
 
@@ -1337,8 +1363,8 @@ def test_force_has_header(pyolin):
         "cfg.parser.has_header = True; (r[0], r[2], r[7]) for r in records",
         input_=File("data_grades_simple_csv.csv"),
         input_format="csv",
-    ) == (
-        """\
+    ) == string_block(
+        """
         | Alfalfa   | 123-45-6789 | 49.0 |
         | --------- | ----------- | ---- |
         | Alfred    | 123-12-1234 | 48.0 |
@@ -1347,18 +1373,18 @@ def test_force_has_header(pyolin):
         | Franklin  | 234-56-2890 | 90.0 |
         | George    | 345-67-3901 | 4.0  |
         | Heffalump | 632-79-9439 | 40.0 |
+
         """
     )
 
 
 def test_header_detection_csv_excel(pyolin):
-    assert (
-        pyolin(
-            'df[["Last Name", "Address"]]',
-            input_=File("data_addresses_with_header.csv"),
-            input_format="csv_excel",
-        )
-        == """\
+    assert pyolin(
+        'df[["Last Name", "Address"]]',
+        input_=File("data_addresses_with_header.csv"),
+        input_format="csv_excel",
+    ) == string_block(
+        """
         | Last Name             | Address                          |
         | --------------------- | -------------------------------- |
         | John                  | 120 jefferson st.                |
@@ -1366,18 +1392,18 @@ def test_header_detection_csv_excel(pyolin):
         | John "Da Man"         | 120 Jefferson St.                |
         | Stephen               | 7452 Terrace "At the Plaza" road |
         | Joan "the bone", Anne | 9th, at Terrace plc              |
+
         """
     )
 
 
 def test_print_dataframe_header(pyolin):
-    assert (
-        pyolin(
-            "list(df.columns.values)",
-            input_=File("data_grades_with_header.csv"),
-            input_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "list(df.columns.values)",
+        input_=File("data_grades_with_header.csv"),
+        input_format="csv",
+    ) == string_block(
+        """
         | value      |
         | ---------- |
         | Last name  |
@@ -1389,6 +1415,7 @@ def test_print_dataframe_header(pyolin):
         | Test4      |
         | Final      |
         | Grade      |
+
         """
     )
 
@@ -1397,10 +1424,10 @@ def test_assign_to_record(pyolin):
     """
     Try to confuse the parser by writing to a field called record
     """
-    assert (
-        pyolin("record=1; record+1")
-        == """\
+    assert pyolin("record=1; record+1") == string_block(
+        """
         2
+
         """
     )
 
@@ -1451,33 +1478,33 @@ def test_invalid_output_format(pyolin):
 
 
 def test_csv_output_format(pyolin):
-    assert (
-        pyolin(
-            "records",
-            output_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "records",
+        output_format="csv",
+    ) == string_block(
+        """
         Bucks,Milwaukee,60,22,0.732\r
         Raptors,Toronto,58,24,0.707\r
         76ers,Philadelphia,51,31,0.622\r
         Celtics,Boston,49,33,0.598\r
         Pacers,Indiana,48,34,0.585\r
+
         """
     )
 
 
 def test_csv_output_format_unix(pyolin):
-    assert (
-        pyolin(
-            "cfg.printer.dialect = csv.unix_dialect; records",
-            output_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "cfg.printer.dialect = csv.unix_dialect; records",
+        output_format="csv",
+    ) == string_block(
+        """
         "Bucks","Milwaukee","60","22","0.732"
         "Raptors","Toronto","58","24","0.707"
         "76ers","Philadelphia","51","31","0.622"
         "Celtics","Boston","49","33","0.598"
         "Pacers","Indiana","48","34","0.585"
+
         """
     )
 
@@ -1489,33 +1516,33 @@ def test_csv_output_invalid_dialect(pyolin):
 
 
 def test_csv_output_format_delimiter(pyolin):
-    assert (
-        pyolin(
-            'cfg.printer.delimiter = "^"; records',
-            output_format="csv",
-        )
-        == """\
+    assert pyolin(
+        'cfg.printer.delimiter = "^"; records',
+        output_format="csv",
+    ) == string_block(
+        """
         Bucks^Milwaukee^60^22^0.732\r
         Raptors^Toronto^58^24^0.707\r
         76ers^Philadelphia^51^31^0.622\r
         Celtics^Boston^49^33^0.598\r
         Pacers^Indiana^48^34^0.585\r
+
         """
     )
 
 
 def test_csv_output_non_tuple(pyolin):
-    assert (
-        pyolin(
-            "record[2]",
-            output_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "record[2]",
+        output_format="csv",
+    ) == string_block(
+        """
         60\r
         58\r
         51\r
         49\r
         48\r
+
         """
     )
 
@@ -1526,27 +1553,27 @@ def test_csv_output_quoting(pyolin):
         input_format="csv",
         output_format="csv",
         input_=File("data_addresses.csv"),
-    ) == (
-        '''\
+    ) == string_block(
+        '''
         John,Doe,120 jefferson st.,Riverside, NJ, 08075\r
         Jack,McGinnis,220 hobo Av.,Phila, PA,09119\r
         "John ""Da Man""",Repici,120 Jefferson St.,Riverside, NJ,08075\r
         Stephen,Tyler,"7452 Terrace ""At the Plaza"" road",SomeTown,SD, 91234\r
         ,Blankman,,SomeTown, SD, 00298\r
         "Joan ""the bone"", Anne",Jet,"9th, at Terrace plc",Desert City,CO,00123\r
+
         '''
     )
 
 
 def test_csv_output_with_header(pyolin):
-    assert (
-        pyolin(
-            'cfg.printer.print_header = True; df[["Last name", "SSN", "Final"]]',
-            input_=File("data_grades_with_header.csv"),
-            input_format="csv",
-            output_format="csv",
-        )
-        == """\
+    assert pyolin(
+        'cfg.printer.print_header = True; df[["Last name", "SSN", "Final"]]',
+        input_=File("data_grades_with_header.csv"),
+        input_format="csv",
+        output_format="csv",
+    ) == string_block(
+        """
         Last name,SSN,Final\r
         Alfalfa,123-45-6789,49\r
         Alfred,123-12-1234,48\r
@@ -1555,6 +1582,7 @@ def test_csv_output_with_header(pyolin):
         Franklin,234-56-2890,90\r
         George,345-67-3901,4\r
         Heffalump,632-79-9439,40\r
+
         """
     )
 
@@ -1564,14 +1592,13 @@ def test_csv_output_with_header_function(pyolin):
         cfg.printer.print_header = True  # type: ignore  # noqa: F821
         return df[["Last name", "SSN", "Final"]]  # type: ignore  # noqa: F821
 
-    assert (
-        pyolin(
-            func,
-            input_=File("data_grades_with_header.csv"),
-            input_format="csv",
-            output_format="csv",
-        )
-        == """\
+    assert pyolin(
+        func,
+        input_=File("data_grades_with_header.csv"),
+        input_format="csv",
+        output_format="csv",
+    ) == string_block(
+        """
         Last name,SSN,Final\r
         Alfalfa,123-45-6789,49\r
         Alfred,123-12-1234,48\r
@@ -1580,6 +1607,7 @@ def test_csv_output_with_header_function(pyolin):
         Franklin,234-56-2890,90\r
         George,345-67-3901,4\r
         Heffalump,632-79-9439,40\r
+
         """
     )
 
@@ -1601,14 +1629,13 @@ def test_streaming_stdin_csv(pyolin):
 
 
 def test_numeric_header(pyolin):
-    assert (
-        pyolin(
-            "cfg.printer.print_header = True; record[0],record[2],record[7]",
-            input_=File("data_grades_simple_csv.csv"),
-            input_format="csv",
-            output_format="csv",
-        )
-        == """\
+    assert pyolin(
+        "cfg.printer.print_header = True; record[0],record[2],record[7]",
+        input_=File("data_grades_simple_csv.csv"),
+        input_format="csv",
+        output_format="csv",
+    ) == string_block(
+        """
         0,1,2\r
         Alfalfa,123-45-6789,49.0\r
         Alfred,123-12-1234,48.0\r
@@ -1617,19 +1644,19 @@ def test_numeric_header(pyolin):
         Franklin,234-56-2890,90.0\r
         George,345-67-3901,4.0\r
         Heffalump,632-79-9439,40.0\r
+
         """
     )
 
 
 def test_markdown_output(pyolin):
-    assert (
-        pyolin(
-            'df[["Last name", "SSN", "Final"]]',
-            input_=File("data_grades_with_header.csv"),
-            input_format="csv",
-            output_format="markdown",
-        )
-        == """\
+    assert pyolin(
+        'df[["Last name", "SSN", "Final"]]',
+        input_=File("data_grades_with_header.csv"),
+        input_format="csv",
+        output_format="markdown",
+    ) == string_block(
+        """
         | Last name | SSN         | Final |
         | --------- | ----------- | ----- |
         | Alfalfa   | 123-45-6789 | 49    |
@@ -1639,22 +1666,23 @@ def test_markdown_output(pyolin):
         | Franklin  | 234-56-2890 | 90    |
         | George    | 345-67-3901 | 4     |
         | Heffalump | 632-79-9439 | 40    |
+
         """
     )
 
 
 def test_tsv_output(pyolin):
-    assert (
-        pyolin(
-            "records",
-            output_format="tsv",
-        )
-        == """\
+    assert pyolin(
+        "records",
+        output_format="tsv",
+    ) == string_block(
+        """
         Bucks	Milwaukee	60	22	0.732\r
         Raptors	Toronto	58	24	0.707\r
         76ers	Philadelphia	51	31	0.622\r
         Celtics	Boston	49	33	0.598\r
         Pacers	Indiana	48	34	0.585\r
+
         """
     )
 
@@ -1662,68 +1690,75 @@ def test_tsv_output(pyolin):
 def test_multiline_input(pyolin):
     assert (
         pyolin(
-            textwrap.dedent(
-                """\
-        record = 1
-        record + 1\
-        """
+            string_block(
+                """
+                record = 1
+                record + 1
+                """
             )
         )
-        == """\
-        2
-        """
+        == string_block(
+            """
+            2
+
+            """
+        )
     )
 
 
 def test_multiline_mixed_input(pyolin):
     assert (
         pyolin(
-            textwrap.dedent(
-                """\
-            record = 1; record += 1
-            record += 1; record + 1
-            """
-            )
+            string_block(
+                """
+                record = 1; record += 1
+                record += 1; record + 1
+                """
+            ),
         )
-        == """\
-        4
-        """
+        == string_block(
+            """
+            4
+
+            """
+        )
     )
 
 
 def test_last_statement(pyolin):
     with pytest.raises(ErrorWithStderr) as exc:
         pyolin("1+1;pass")
-    assert (
-        textwrap.dedent(
-            """\
-            Cannot evaluate value from statement:
-              pass"""
-        )
-        == str(exc.value.__cause__)
+    assert str(exc.value.__cause__) == string_block(
+        """
+        Cannot evaluate value from statement:
+          pass
+        """
     )
 
 
 def test_multiline_python_program(pyolin):
     assert (
         pyolin(
-            textwrap.dedent(
-                """\
-            result = []
-            for i in range(5):
-                result.append(range(i + 1))
-            result
-            """
+            string_block(
+                """
+                result = []
+                for i in range(5):
+                    result.append(range(i + 1))
+                result
+                """
             ),
             output_format="awk",
         )
-        == """\
-        0
-        0 1
-        0 1 2
-        0 1 2 3
-        0 1 2 3 4
-        """
+        == string_block(
+            """
+            0
+            0 1
+            0 1 2
+            0 1 2 3
+            0 1 2 3 4
+
+            """
+        )
     )
 
 
@@ -1734,8 +1769,8 @@ def test_markdown_wrapping(pyolin):
             input_=File("data_amazon_reviews.tsv"),
             input_format="tsv",
             output_format="markdown",
-        ) == (
-            """\
+        ) == string_block(
+            """
             | marketplace | review_body                                      | star_rating |
             | ----------- | ------------------------------------------------ | ----------- |
             | US          | Absolutely love this watch! Get compliments      | 5           |
@@ -1757,6 +1792,7 @@ def test_markdown_wrapping(pyolin):
             :             : about a week and so far it has kept good time    :             :
             :             : despite day 1 which is typical of a new          :             :
             :             : mechanical watch                                 :             :
+
             """
         )
 
@@ -1767,24 +1803,24 @@ def test_markdown_wrapping2(pyolin):
             "records",
             input_=File("data_formatting.txt"),
             output_format="markdown",
-        ) == (
-            """\
+        ) == string_block(
+            """
             | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11    | 12           | 13  | 14 |
             | - | - | - | - | - | - | - | - | - | - | -- | ----- | ------------ | --- | -- |
             | a | b | c | d | e | f | g | h | i | j | k  | lmnop | qrstuv123456 | wxy | z  |
             :   :   :   :   :   :   :   :   :   :   :    :       : 789123456789 :     :    :
             :   :   :   :   :   :   :   :   :   :   :    :       : 123456789    :     :    :
+
             """
         )
 
 
 def test_json_output(pyolin):
-    assert (
-        pyolin(
-            "records[0]",
-            output_format="json",
-        )
-        == """\
+    assert pyolin(
+        "records[0]",
+        output_format="json",
+    ) == string_block(
+        """
         [
           "Bucks",
           "Milwaukee",
@@ -1792,33 +1828,33 @@ def test_json_output(pyolin):
           22,
           0.732
         ]
+
         """
     )
 
 
 def test_jsonl_output(pyolin):
-    assert (
-        pyolin(
-            "records",
-            output_format="jsonl",
-        )
-        == """\
+    assert pyolin(
+        "records",
+        output_format="jsonl",
+    ) == string_block(
+        """
         ["Bucks", "Milwaukee", 60, 22, 0.732]
         ["Raptors", "Toronto", 58, 24, 0.707]
         ["76ers", "Philadelphia", 51, 31, 0.622]
         ["Celtics", "Boston", 49, 33, 0.598]
         ["Pacers", "Indiana", 48, 34, 0.585]
+
         """
     )
 
 
 def test_json_output_with_manual_header(pyolin):
-    assert (
-        pyolin(
-            "cfg.header = ['team', 'city', 'wins', 'loss', 'Win rate']; records[0]",
-            output_format="json",
-        )
-        == """\
+    assert pyolin(
+        "cfg.header = ['team', 'city', 'wins', 'loss', 'Win rate']; records[0]",
+        output_format="json",
+    ) == string_block(
+        """
         {
           "team": "Bucks",
           "city": "Milwaukee",
@@ -1826,34 +1862,34 @@ def test_json_output_with_manual_header(pyolin):
           "loss": 22,
           "Win rate": 0.732
         }
+
         """
     )
 
 
 def test_jsonl_output_with_manual_header(pyolin):
-    assert (
-        pyolin(
-            "cfg.header = ['team', 'city', 'wins', 'loss', 'Win rate']; records",
-            output_format="jsonl",
-        )
-        == """\
+    assert pyolin(
+        "cfg.header = ['team', 'city', 'wins', 'loss', 'Win rate']; records",
+        output_format="jsonl",
+    ) == string_block(
+        """
         {"team": "Bucks", "city": "Milwaukee", "wins": 60, "loss": 22, "Win rate": 0.732}
         {"team": "Raptors", "city": "Toronto", "wins": 58, "loss": 24, "Win rate": 0.707}
         {"team": "76ers", "city": "Philadelphia", "wins": 51, "loss": 31, "Win rate": 0.622}
         {"team": "Celtics", "city": "Boston", "wins": 49, "loss": 33, "Win rate": 0.598}
         {"team": "Pacers", "city": "Indiana", "wins": 48, "loss": 34, "Win rate": 0.585}
+
         """
     )
 
 
 def test_json_output_with_header(pyolin):
-    assert (
-        pyolin(
-            "records",
-            input_=File("data_files_with_header.txt"),
-            output_format="json",
-        )
-        == """\
+    assert pyolin(
+        "records",
+        input_=File("data_files_with_header.txt"),
+        output_format="json",
+    ) == string_block(
+        """
         [
             {"Path": "dir", "IsDir": "True", "Size": 30, "Score": 40.0},
             {"Path": "dir/file.txt", "IsDir": "False", "Size": 40, "Score": 32.0},
@@ -1864,19 +1900,19 @@ def test_json_output_with_header(pyolin):
             {"Path": "dir/subdir", "IsDir": "True", "Size": 12, "Score": 42.0},
             {"Path": "dir/subdir/subfile.txt", "IsDir": "False", "Size": 11, "Score": 53.0}
         ]
+
         """
     )
 
 
 def test_json_input(pyolin):
-    assert (
-        pyolin(
-            "df",
-            input_=File("data_colors.json"),
-            input_format="json",
-            output_format="markdown",
-        )
-        == """\
+    assert pyolin(
+        "df",
+        input_=File("data_colors.json"),
+        input_format="json",
+        output_format="markdown",
+    ) == string_block(
+        """
         | color   | value |
         | ------- | ----- |
         | red     | #f00  |
@@ -1886,6 +1922,7 @@ def test_json_input(pyolin):
         | magenta | #f0f  |
         | yellow  | #ff0  |
         | black   | #000  |
+
         """
     )
 
@@ -1902,26 +1939,27 @@ def test_jsonl_input(pyolin):
         input_=in_,
         input_format="json",
         output_format="markdown",
-    ) == (
-        """\
+    ) == string_block(
+        """
         | color | value |
         | ----- | ----- |
         | red   | #f00  |
         | green | #0f0  |
         | blue  | #00f  |
+
         """
     )
 
 
 def test_contains(pyolin):
-    assert (
-        pyolin(
-            '("green", "#0f0") in records',
-            input_=File("data_colors.json"),
-            input_format="json",
-        )
-        == """\
+    assert pyolin(
+        '("green", "#0f0") in records',
+        input_=File("data_colors.json"),
+        input_format="json",
+    ) == string_block(
+        """
         True
+
         """
     )
 
@@ -1931,47 +1969,59 @@ def test_contains(pyolin):
     [
         (
             "len(records)",
-            """\
-            | value |
-            | ----- |
-            | 7     |
-            """,
+            string_block(
+                """
+                | value |
+                | ----- |
+                | 7     |
+
+                """,
+            ),
         ),
         (
             "records[0]",
-            """\
-            | color | value |
-            | ----- | ----- |
-            | red   | #f00  |
-            """,
+            string_block(
+                """
+                | color | value |
+                | ----- | ----- |
+                | red   | #f00  |
+
+                """,
+            ),
         ),
         (
             "records",
-            """\
-            | color   | value |
-            | ------- | ----- |
-            | red     | #f00  |
-            | green   | #0f0  |
-            | blue    | #00f  |
-            | cyan    | #0ff  |
-            | magenta | #f0f  |
-            | yellow  | #ff0  |
-            | black   | #000  |
-            """,
+            string_block(
+                """
+                | color   | value |
+                | ------- | ----- |
+                | red     | #f00  |
+                | green   | #0f0  |
+                | blue    | #00f  |
+                | cyan    | #0ff  |
+                | magenta | #f0f  |
+                | yellow  | #ff0  |
+                | black   | #000  |
+
+                """,
+            ),
         ),
         (
             "record.source",
-            """\
-            | value                                 |
-            | ------------------------------------- |
-            | {"color": "red", "value": "#f00"}     |
-            | {"color": "green", "value": "#0f0"}   |
-            | {"color": "blue", "value": "#00f"}    |
-            | {"color": "cyan", "value": "#0ff"}    |
-            | {"color": "magenta", "value": "#f0f"} |
-            | {"color": "yellow", "value": "#ff0"}  |
-            | {"color": "black", "value": "#000"}   |
-            """,
+            string_block(
+                """
+                | value                                 |
+                | ------------------------------------- |
+                | {"color": "red", "value": "#f00"}     |
+                | {"color": "green", "value": "#0f0"}   |
+                | {"color": "blue", "value": "#00f"}    |
+                | {"color": "cyan", "value": "#0ff"}    |
+                | {"color": "magenta", "value": "#f0f"} |
+                | {"color": "yellow", "value": "#ff0"}  |
+                | {"color": "black", "value": "#000"}   |
+
+                """,
+            ),
         ),
     ],
 )
@@ -1988,62 +2038,63 @@ def test_markdown_output_format(pyolin, prog, expected):
 
 
 def test_markdown_non_uniform_column_count(pyolin):
-    assert (
-        pyolin(
-            "range(i) for i in range(1, 5)",
-            output_format="markdown",
-        )
-        == """\
+    assert pyolin(
+        "range(i) for i in range(1, 5)",
+        output_format="markdown",
+    ) == string_block(
+        """
         | value |
         | ----- |
         | 0     |
         | 0     | 1 |
         | 0     | 1 | 2 |
         | 0     | 1 | 2 | 3 |
+
         """
     )
 
 
 def test_repr_printer(pyolin):
-    assert (
-        pyolin(
-            "range(10)",
-            output_format="repr",
-        )
-        == """\
+    assert pyolin(
+        "range(10)",
+        output_format="repr",
+    ) == string_block(
+        """
         range(0, 10)
+
         """
     )
 
 
 def test_repr_printer_table(pyolin):
-    assert pyolin("records", output_format="repr") == (
-        """\
+    assert pyolin("records", output_format="repr") == string_block(
+        """
         [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
+
         """  # noqa: E501
     )
 
 
 def test_repr_printer_records(pyolin):
-    assert (
-        pyolin(
-            '"aloha\u2011\u2011\u2011"',
-            output_format="repr",
-        )
-        == """\
+    assert pyolin(
+        '"aloha\u2011\u2011\u2011"',
+        output_format="repr",
+    ) == string_block(
+        """
         'aloha\u2011\u2011\u2011'
+
         """
     )
 
 
 def test_str_printer_records(pyolin):
-    assert (
-        pyolin(
-            '"aloha\u2011\u2011\u2011"',
-            output_format="str",
-        )
-        == """\
+    assert pyolin(
+        '"aloha\u2011\u2011\u2011"',
+        output_format="str",
+    ) == string_block(
+        """
         aloha\u2011\u2011\u2011
+
         """
     )
 
@@ -2052,20 +2103,19 @@ def test_str_printer_table(pyolin):
     assert pyolin(
         "records",
         output_format="str",
-    ) == (
-        "[('Bucks', 'Milwaukee', '60', '22', '0.732'), "
-        "('Raptors', 'Toronto', '58', '24', '0.707'), "
-        "('76ers', 'Philadelphia', '51', '31', '0.622'), "
-        "('Celtics', 'Boston', '49', '33', '0.598'), "
-        "('Pacers', 'Indiana', '48', '34', '0.585')]\n"
+    ) == string_block(
+        """
+        [('Bucks', 'Milwaukee', '60', '22', '0.732'), ('Raptors', 'Toronto', '58', '24', '0.707'), ('76ers', 'Philadelphia', '51', '31', '0.622'), ('Celtics', 'Boston', '49', '33', '0.598'), ('Pacers', 'Indiana', '48', '34', '0.585')]
+
+        """
     )
 
 
 def test_set_printer(pyolin):
-    assert (
-        pyolin('cfg.printer = new_printer("repr"); range(10)')
-        == """\
+    assert pyolin('cfg.printer = new_printer("repr"); range(10)') == string_block(
+        """
         range(0, 10)
+
         """
     )
 
@@ -2104,19 +2154,21 @@ def test_binary_input_len_bytes_non_unicode(pyolin):
 
 
 def test_binary_input_can_be_accessed(pyolin):
-    assert (
-        pyolin("type(file).__name__", input_=File("data_pickle"))
-        == """\
+    assert pyolin("type(file).__name__", input_=File("data_pickle")) == string_block(
+        """
         DeferredType
+
         """
     )
 
 
 def test_binary_input_pickle(pyolin):
-    assert (
-        pyolin("pickle.loads(file.bytes)", input_=File("data_pickle"))
-        == """\
+    assert pyolin(
+        "pickle.loads(file.bytes)", input_=File("data_pickle")
+    ) == string_block(
+        """
         hello world
+
         """
     )
 
@@ -2208,13 +2260,12 @@ def test_binary_input_access_records(pyolin):
 
 
 def test_set_field_separator(pyolin):
-    assert (
-        pyolin(
-            'cfg.parser.field_separator = ","; record',
-            input_=File("data_grades_simple_csv.csv"),
-            input_format="tsv",  # Make sure we can change the field separator from "\t" to ","
-        )
-        == """\
+    assert pyolin(
+        'cfg.parser.field_separator = ","; record',
+        input_=File("data_grades_simple_csv.csv"),
+        input_format="tsv",  # Make sure we can change the field separator from "\t" to ","
+    ) == string_block(
+        """
         | 0         | 1          | 2           | 3    | 4    | 5     | 6    | 7    | 8  |
         | --------- | ---------- | ----------- | ---- | ---- | ----- | ---- | ---- | -- |
         | Alfalfa   | Aloysius   | 123-45-6789 | 40.0 | 90.0 | 100.0 | 83.0 | 49.0 | D- |
@@ -2224,17 +2275,17 @@ def test_set_field_separator(pyolin):
         | Franklin  | Benny      | 234-56-2890 | 50.0 | 1.0  | 90.0  | 80.0 | 90.0 | B- |
         | George    | Boy        | 345-67-3901 | 40.0 | 1.0  | 11.0  | -1.0 | 4.0  | B  |
         | Heffalump | Harvey     | 632-79-9439 | 30.0 | 1.0  | 20.0  | 30.0 | 40.0 | C  |
+
         """
     )
 
 
 def test_set_record_separator(pyolin):
-    assert (
-        pyolin(
-            'cfg.parser.record_separator = ","; record',
-            input_=File("data_onerow.csv"),
-        )
-        == """\
+    assert pyolin(
+        'cfg.parser.record_separator = ","; record',
+        input_=File("data_onerow.csv"),
+    ) == string_block(
+        """
         | value     |
         | --------- |
         | JET       |
@@ -2251,17 +2302,17 @@ def test_set_record_separator(pyolin):
         | 1         |
         | 0         |
         | 0         |
+
         """
     )
 
 
 def test_set_parser_json(pyolin):
-    assert (
-        pyolin(
-            'cfg.parser = new_parser("json"); df',
-            input_=File("data_colors.json"),
-        )
-        == """\
+    assert pyolin(
+        'cfg.parser = new_parser("json"); df',
+        input_=File("data_colors.json"),
+    ) == string_block(
+        """
         | color   | value |
         | ------- | ----- |
         | red     | #f00  |
@@ -2271,6 +2322,7 @@ def test_set_parser_json(pyolin):
         | magenta | #f0f  |
         | yellow  | #ff0  |
         | black   | #000  |
+
         """
     )
 
@@ -2282,9 +2334,9 @@ def test_set_parser_record(pyolin):
 
 
 def test_records_if_undefined(pyolin):
-    assert (
-        pyolin("records if False")
-        == """\
+    assert pyolin("records if False") == string_block(
+        """
+
         """
     )
 
@@ -2323,14 +2375,13 @@ def test_name_error(pyolin):
 
 
 def test_record_first(pyolin):
-    assert (
-        pyolin(
-            "global mysum\n"
-            'if record.first: mysum = 0; cfg.header = ("sum", "value")\n'
-            "mysum += record[2]\n"
-            "mysum, record[2]"
-        )
-        == """\
+    assert pyolin(
+        "global mysum\n"
+        'if record.first: mysum = 0; cfg.header = ("sum", "value")\n'
+        "mysum += record[2]\n"
+        "mysum, record[2]"
+    ) == string_block(
+        """
         | sum | value |
         | --- | ----- |
         | 60  | 60    |
@@ -2338,6 +2389,7 @@ def test_record_first(pyolin):
         | 169 | 51    |
         | 218 | 49    |
         | 266 | 48    |
+
         """
     )
 
@@ -2346,8 +2398,8 @@ def test_record_first(pyolin):
     assert pyolin(
         'mysum = 0; cfg.header = ("sum", "value");;'
         "((mysum := mysum + r[2]), r[2]) for r in records"
-    ) == (
-        """\
+    ) == string_block(
+        """
         | sum | value |
         | --- | ----- |
         | 60  | 60    |
@@ -2355,14 +2407,14 @@ def test_record_first(pyolin):
         | 169 | 51    |
         | 218 | 49    |
         | 266 | 48    |
+
         """
     )
 
 
 def test_record_num(pyolin):
-    assert (
-        pyolin("record.num")
-        == """\
+    assert pyolin("record.num") == string_block(
+        """
         | value |
         | ----- |
         | 0     |
@@ -2370,14 +2422,14 @@ def test_record_num(pyolin):
         | 2     |
         | 3     |
         | 4     |
+
         """
     )
 
 
 def test_trailing_newline(pyolin):
-    assert (
-        pyolin("records\n")
-        == """\
+    assert pyolin("records\n") == string_block(
+        """
         | 0       | 1            | 2  | 3  | 4     |
         | ------- | ------------ | -- | -- | ----- |
         | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
@@ -2385,6 +2437,7 @@ def test_trailing_newline(pyolin):
         | 76ers   | Philadelphia | 51 | 31 | 0.622 |
         | Celtics | Boston       | 49 | 33 | 0.598 |
         | Pacers  | Indiana      | 48 | 34 | 0.585 |
+
         """
     )
 
@@ -2416,10 +2469,10 @@ def test_execute_function_record_scoped():
 
 
 def test_double_semi_colon(pyolin):
-    assert (
-        pyolin("record = 1; record += 1;; record += 1; record + 1")
-        == """\
+    assert pyolin("record = 1; record += 1;; record += 1; record + 1") == string_block(
+        """
         4
+
         """
     )
 
@@ -2428,13 +2481,11 @@ def test_if_record_first_double_semi_colon(pyolin):
     """
     Double semi-colon is treated as a newline
     """
-    assert (
-        pyolin(
-            # Alternative, record-scoped way to write
-            #   sum = 0; ((sum, record[2]) for record in records)
-            "global sum;; if record.first: sum = 0;; sum += record[2]; sum, record[2]"
-        )
-        == """\
+    assert pyolin(  # string_block(Alternative, record-scoped way to writ
+        #   sum = 0; ((sum, record[2]) for record in records)
+        "global sum;; if record.first: sum = 0;; sum += record[2]; sum, record[2]"
+    ) == string_block(
+        """
         | 0   | 1  |
         | --- | -- |
         | 60  | 60 |
@@ -2442,6 +2493,7 @@ def test_if_record_first_double_semi_colon(pyolin):
         | 169 | 51 |
         | 218 | 49 |
         | 266 | 48 |
+
         """
     )
 
@@ -2451,9 +2503,8 @@ def test_undefined_is_false():
 
 
 def test_end_with_double_semi_colon(pyolin):
-    assert (
-        pyolin("record[2];;")
-        == """\
+    assert pyolin("record[2];;") == string_block(
+        """
         | value |
         | ----- |
         | 60    |
@@ -2461,6 +2512,7 @@ def test_end_with_double_semi_colon(pyolin):
         | 51    |
         | 49    |
         | 48    |
+
         """
     )
 
@@ -2469,12 +2521,11 @@ def test_sys_argv(pyolin):
     """
     sys.argv should be shifted, so sys.argv[1] should be the first one after the pyolin prog
     """
-    assert (
-        pyolin(
-            "sys.argv",
-            extra_args=["testing", "1", "2", "3"],
-        )
-        == """\
+    assert pyolin(
+        "sys.argv",
+        extra_args=["testing", "1", "2", "3"],
+    ) == string_block(
+        """
         | value   |
         | ------- |
         | pyolin  |
@@ -2482,6 +2533,7 @@ def test_sys_argv(pyolin):
         | 1       |
         | 2       |
         | 3       |
+
         """
     )
 
@@ -2493,9 +2545,10 @@ def test_argv(pyolin):
     assert pyolin(
         "(argv[1], argv[2] + argv[3], argv[4].bool)",
         extra_args=["testing", "1", "2", "true"],
-    ) == (
-        """\
+    ) == string_block(
+        """
         testing 3 True
+
         """
     )
 
@@ -2505,19 +2558,25 @@ def test_argv(pyolin):
     [
         (
             "txt",
-            """\
-            color value
-            red #f00
-            """,
+            string_block(
+                """
+                color value
+                red #f00
+
+                """
+            ),
         ),
         (
             "json",
-            """\
-            {
-              "color": "red",
-              "value": "#f00"
-            }
-            """,
+            string_block(
+                """
+                {
+                  "color": "red",
+                  "value": "#f00"
+                }
+
+                """,
+            ),
         ),
     ],
 )
@@ -2539,65 +2598,74 @@ def test_manual_load_json_record(pyolin, output_format, expected):
             "txt",
             # There isn't really a correct format for arbitrary JSON when using txt output.
             # Currently each object has its key-value pair flattened into separate columns
-            """\
-            color value
-            red #f00
-            green #0f0
-            blue #00f
-            cyan #0ff
-            magenta #f0f
-            yellow #ff0
-            black #000
-            """,
+            string_block(
+                """
+                color value
+                red #f00
+                green #0f0
+                blue #00f
+                cyan #0ff
+                magenta #f0f
+                yellow #ff0
+                black #000
+
+                """,
+            ),
         ),
         (
             "json",
-            """\
-            [
-              {
-                "color": "red",
-                "value": "#f00"
-              },
-              {
-                "color": "green",
-                "value": "#0f0"
-              },
-              {
-                "color": "blue",
-                "value": "#00f"
-              },
-              {
-                "color": "cyan",
-                "value": "#0ff"
-              },
-              {
-                "color": "magenta",
-                "value": "#f0f"
-              },
-              {
-                "color": "yellow",
-                "value": "#ff0"
-              },
-              {
-                "color": "black",
-                "value": "#000"
-              }
-            ]
-            """,
+            string_block(
+                """
+                [
+                  {
+                    "color": "red",
+                    "value": "#f00"
+                  },
+                  {
+                    "color": "green",
+                    "value": "#0f0"
+                  },
+                  {
+                    "color": "blue",
+                    "value": "#00f"
+                  },
+                  {
+                    "color": "cyan",
+                    "value": "#0ff"
+                  },
+                  {
+                    "color": "magenta",
+                    "value": "#f0f"
+                  },
+                  {
+                    "color": "yellow",
+                    "value": "#ff0"
+                  },
+                  {
+                    "color": "black",
+                    "value": "#000"
+                  }
+                ]
+
+                """,
+            ),
         ),
         (
             "md",
-            """\
-            | color   | value |
-            | ------- | ----- |
-            | red     | #f00  |
-            | green   | #0f0  |
-            | blue    | #00f  |
-            | cyan    | #0ff  |
-            | magenta | #f0f  |
-            | yellow  | #ff0  |
-            | black   | #000  |
-            """,
+            string_block(
+                """
+                | color   | value |
+                | ------- | ----- |
+                | red     | #f00  |
+                | green   | #0f0  |
+                | blue    | #00f  |
+                | cyan    | #0ff  |
+                | magenta | #f0f  |
+                | yellow  | #ff0  |
+                | black   | #000  |
+
+                """,
+            ),
         ),
     ],
 )
@@ -2616,8 +2684,8 @@ def test_manual_load_csv(pyolin):
     assert pyolin(
         "csv.reader(io.StringIO(file))",
         input_=File("data_addresses.csv"),
-    ) == (
-        """\
+    ) == string_block(
+        """
         | 0                     | 1        | 2                                | 3           | 4   | 5      |
         | --------------------- | -------- | -------------------------------- | ----------- | --- | ------ |
         | John                  | Doe      | 120 jefferson st.                | Riverside   |  NJ |  08075 |
@@ -2626,6 +2694,7 @@ def test_manual_load_csv(pyolin):
         | Stephen               | Tyler    | 7452 Terrace "At the Plaza" road | SomeTown    | SD  |  91234 |
         |                       | Blankman |                                  | SomeTown    |  SD |  00298 |
         | Joan "the bone", Anne | Jet      | 9th, at Terrace plc              | Desert City | CO  | 00123  |
+
         """  # noqa: E501
     )
 
@@ -2641,7 +2710,12 @@ def test_jsonobj_string_output(pyolin):
         "jsonobj['glossary']['title']",
         input_=File("data_json_example.json"),
         output_format="txt",
-    ) == ("example glossary\n")
+    ) == string_block(
+        """
+        example glossary
+
+        """
+    )
 
 
 def test_jsonobjs_single_line(pyolin):
@@ -2654,12 +2728,13 @@ def test_jsonobjs_single_line(pyolin):
         "jsonobjs",
         input_=in_,
         output_format="txt",
-    ) == (
-        """\
+    ) == string_block(
+        """
         a b
         1 2
         2 3
         3 4
+
         """
     )
 
@@ -2673,8 +2748,8 @@ def test_jsonobjs_sequence(pyolin):
     assert pyolin(
         "jsonobjs[0], len(jsonobjs)",
         input_=in_,
-    ) == (
-        """\
+    ) == string_block(
+        """
         [
           {
             "a": 1,
@@ -2682,6 +2757,7 @@ def test_jsonobjs_sequence(pyolin):
           },
           3
         ]
+
         """
     )
 
@@ -2691,8 +2767,8 @@ def test_jsonobj_obj_output(pyolin):
         "jsonobj['glossary']['GlossDiv']['GlossList']['GlossEntry']['GlossDef']",
         input_=File("data_json_example.json"),
         output_format="json",
-    ) == (
-        """\
+    ) == string_block(
+        """
         {
           "para": "A meta-markup language, used to create markup languages such as DocBook.",
           "GlossSeeAlso": [
@@ -2700,6 +2776,7 @@ def test_jsonobj_obj_output(pyolin):
             "XML"
           ]
         }
+
         """
     )
 
@@ -2709,24 +2786,24 @@ def test_json_auto_printer(pyolin):
     in_ = """\
         [1, 2, 3]
         """
-    assert pyolin("jsonobj", input_=in_) == (
-        """\
+    assert pyolin("jsonobj", input_=in_) == string_block(
+        """
         [
           1,
           2,
           3
         ]
+
         """
     )
 
 
 def test_3d_table(pyolin):
-    assert (
-        pyolin(
-            "[['foo', ['a', 'b']], ['bar', ['c', 'd']]]",
-            input_=File("data_json_example.json"),
-        )
-        == """\
+    assert pyolin(
+        "[['foo', ['a', 'b']], ['bar', ['c', 'd']]]",
+        input_=File("data_json_example.json"),
+    ) == string_block(
+        """
         [
           [
             "foo",
@@ -2743,6 +2820,7 @@ def test_3d_table(pyolin):
             ]
           ]
         ]
+
         """
     )
 
@@ -2750,16 +2828,17 @@ def test_3d_table(pyolin):
 def test_multiline_json_prog(pyolin):
     assert (
         pyolin(
-            textwrap.dedent(
-                """\
+            string_block(
+                """
                 [
                     ['foo', ['a', 'b']], ['bar', ['c', 'd']]
-                ]"""
+                ]
+                """
             ),
             input_=File("data_json_example.json"),
         )
-        == (
-            """\
+        == string_block(
+            """
             [
               [
                 "foo",
@@ -2776,62 +2855,62 @@ def test_multiline_json_prog(pyolin):
                 ]
               ]
             ]
+
             """
         )
     )
 
 
 def test_json_with_undefined(pyolin):
-    assert (
-        pyolin(
-            "[_UNDEFINED_, 'foo']",
-            input_=File("data_json_example.json"),
-            output_format="json",
-        )
-        == """\
+    assert pyolin(
+        "[_UNDEFINED_, 'foo']",
+        input_=File("data_json_example.json"),
+        output_format="json",
+    ) == string_block(
+        """
         [
           "foo"
         ]
+
         """
     )
 
 
 def test_records_negative_index(pyolin):
-    assert (
-        pyolin("records[-1]")
-        == """\
+    assert pyolin("records[-1]") == string_block(
+        """
         Pacers Indiana 48 34 0.585
+
         """
     )
 
 
 def test_records_negative_slice_start(pyolin):
-    assert (
-        pyolin("records[-1:]")
-        == """\
+    assert pyolin("records[-1:]") == string_block(
+        """
         | 0      | 1       | 2  | 3  | 4     |
         | ------ | ------- | -- | -- | ----- |
         | Pacers | Indiana | 48 | 34 | 0.585 |
+
         """
     )
 
 
 def test_records_negative_slice_stop(pyolin):
-    assert (
-        pyolin("records[:-3]")
-        == """\
+    assert pyolin("records[:-3]") == string_block(
+        """
         | 0       | 1         | 2  | 3  | 4     |
         | ------- | --------- | -- | -- | ----- |
         | Bucks   | Milwaukee | 60 | 22 | 0.732 |
         | Raptors | Toronto   | 58 | 24 | 0.707 |
+
         """
     )
 
 
 def test_records_negative_slice_step(pyolin):
-    assert (
-        pyolin("records[::-1]")
-        == """\
+    assert pyolin("records[::-1]") == string_block(
+        """
         | 0       | 1            | 2  | 3  | 4     |
         | ------- | ------------ | -- | -- | ----- |
         | Pacers  | Indiana      | 48 | 34 | 0.585 |
@@ -2839,6 +2918,7 @@ def test_records_negative_slice_step(pyolin):
         | 76ers   | Philadelphia | 51 | 31 | 0.622 |
         | Raptors | Toronto      | 58 | 24 | 0.707 |
         | Bucks   | Milwaukee    | 60 | 22 | 0.732 |
+
         """
     )
 

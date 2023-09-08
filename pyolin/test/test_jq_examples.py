@@ -6,7 +6,7 @@ Data from https://programminghistorian.org/assets/jq_rkm.json
 
 import difflib
 
-from pyolin.test.conftest import File, assert_contains, assert_startswith, custom_dedent
+from pyolin.test.conftest import File, assert_contains, assert_startswith, string_block
 
 
 def test_print_reformatted(pyolin):
@@ -20,7 +20,7 @@ def test_print_reformatted(pyolin):
         input_=File("data_jq_example_rkm.json"),
         output_format="json",
     ).getvalue()
-    expected_prefix = custom_dedent(
+    expected_prefix = string_block(
         r"""
         [
           {
@@ -61,10 +61,12 @@ def test_print_array(pyolin):
             input_=File("data_jq_example_rkm.json"),
             output_format="jsonl",
         ).getvalue(),
-        r"""
-        {"links": {"self": "https://www.rijksmuseum.nl/api/nl/collection/SK-C-5", "web": "https://www.rijksmuseum.nl/nl/collectie/SK-C-5"}, "id": "nl-SK-C-5", "objectNumber": "SK-C-5", "title": "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019", "hasImage": true, "principalOrFirstMaker": "Rembrandt Harmensz. van Rijn", "longTitle": "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019, Rembrandt Harmensz. van Rijn, 1642", "showImage": true, "permitDownload": true, "webImage": {"guid": "3ae88fe0-021c-41ae-a4ce-cc70b7bc6295", "offsetPercentageX": 50, "offsetPercentageY": 100, "width": 2500, "height": 2034, "url": "http://lh6.ggpht.com/ZYWwML8mVFonXzbmg2rQBulNuCSr3rAaf5ppNcUc2Id8qXqudDL1NSYxaqjEXyDLSbeNFzOHRu0H7rbIws0Js4d7s_M=s0"}, "headerImage": {"guid": "29a2a516-f1d2-4713-9cbd-7a4458026057", "offsetPercentageX": 50, "offsetPercentageY": 50, "width": 1920, "height": 460, "url": "http://lh3.ggpht.com/rvCc4t2BWHAgDlzyiPlp1sBhc8ju0aSsu2HxR8rN_ZVPBcujP94pukbmF3Blmhi-GW5cx1_YsYYCDMTPePocwM6d2vk=s0"}, "productionPlaces": ["Amsterdam"]}
-        {"links": {"self": "https://www.rijksmuseum.nl/api/nl/collection/SK-A-1505", "web": "https://www.rijksmuseum.nl/nl/collectie/SK-A-1505"}, "id": "nl-SK-A-1505", "objectNumber": "SK-A-1505", "title": "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019", "hasImage": true, "principalOrFirstMaker": "Paul Joseph Constantin Gabri\u00ebl", "longTitle": "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019, Paul Joseph Constantin Gabri\u00ebl, ca. 1889", "showImage": true, "permitDownload": true, "webImage": {"guid": "85747e15-0b95-4306-922f-0fa17fc0ffeb", "offsetPercentageX": 50, "offsetPercentageY": 50, "width": 1767, "height": 2748, "url": "http://lh4.ggpht.com/PkQr-nNqzn0OVXVd4-hdJ6PPdWZ6-DQ_74WfBT3MZIV4LNYA-q8LUrtReXNstuzl9k6gKWkaBwG-LcFZ7zWU9Ch92g=s0"}, "headerImage": {"guid": "34e94d7f-4d7a-464e-b3f9-eb5532f98c27", "offsetPercentageX": 50, "offsetPercentageY": 50, "width": 1920, "height": 460, "url": "http://lh3.ggpht.com/1JKghbAAi6kmGGW1QeVJpeBdarUXrZwtwKx9Y94fqjnB2Ln5keXAG02ZDazKH0qrVqi7QWDfm0SfEIWBP1xru_6Cyg=s0"}, "productionPlaces": []}
-        """,  # noqa: E501
+        string_block(
+            r"""
+            {"links": {"self": "https://www.rijksmuseum.nl/api/nl/collection/SK-C-5", "web": "https://www.rijksmuseum.nl/nl/collectie/SK-C-5"}, "id": "nl-SK-C-5", "objectNumber": "SK-C-5", "title": "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019", "hasImage": true, "principalOrFirstMaker": "Rembrandt Harmensz. van Rijn", "longTitle": "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019, Rembrandt Harmensz. van Rijn, 1642", "showImage": true, "permitDownload": true, "webImage": {"guid": "3ae88fe0-021c-41ae-a4ce-cc70b7bc6295", "offsetPercentageX": 50, "offsetPercentageY": 100, "width": 2500, "height": 2034, "url": "http://lh6.ggpht.com/ZYWwML8mVFonXzbmg2rQBulNuCSr3rAaf5ppNcUc2Id8qXqudDL1NSYxaqjEXyDLSbeNFzOHRu0H7rbIws0Js4d7s_M=s0"}, "headerImage": {"guid": "29a2a516-f1d2-4713-9cbd-7a4458026057", "offsetPercentageX": 50, "offsetPercentageY": 50, "width": 1920, "height": 460, "url": "http://lh3.ggpht.com/rvCc4t2BWHAgDlzyiPlp1sBhc8ju0aSsu2HxR8rN_ZVPBcujP94pukbmF3Blmhi-GW5cx1_YsYYCDMTPePocwM6d2vk=s0"}, "productionPlaces": ["Amsterdam"]}
+            {"links": {"self": "https://www.rijksmuseum.nl/api/nl/collection/SK-A-1505", "web": "https://www.rijksmuseum.nl/nl/collectie/SK-A-1505"}, "id": "nl-SK-A-1505", "objectNumber": "SK-A-1505", "title": "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019", "hasImage": true, "principalOrFirstMaker": "Paul Joseph Constantin Gabri\u00ebl", "longTitle": "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019, Paul Joseph Constantin Gabri\u00ebl, ca. 1889", "showImage": true, "permitDownload": true, "webImage": {"guid": "85747e15-0b95-4306-922f-0fa17fc0ffeb", "offsetPercentageX": 50, "offsetPercentageY": 50, "width": 1767, "height": 2748, "url": "http://lh4.ggpht.com/PkQr-nNqzn0OVXVd4-hdJ6PPdWZ6-DQ_74WfBT3MZIV4LNYA-q8LUrtReXNstuzl9k6gKWkaBwG-LcFZ7zWU9Ch92g=s0"}, "headerImage": {"guid": "34e94d7f-4d7a-464e-b3f9-eb5532f98c27", "offsetPercentageX": 50, "offsetPercentageY": 50, "width": 1920, "height": 460, "url": "http://lh3.ggpht.com/1JKghbAAi6kmGGW1QeVJpeBdarUXrZwtwKx9Y94fqjnB2Ln5keXAG02ZDazKH0qrVqi7QWDfm0SfEIWBP1xru_6Cyg=s0"}, "productionPlaces": []}
+            """,  # noqa: E501
+        ),
     )
 
 
@@ -80,8 +82,8 @@ def test_pipe(pyolin):
         input_=File("data_jq_example_rkm.json"),
         output_format="awk",
     )
-    assert output == (
-        """\
+    assert output == string_block(
+        """
         nl-SK-C-5
         nl-SK-A-1505
         nl-SK-A-180
@@ -92,6 +94,7 @@ def test_pipe(pyolin):
         nl-SK-A-2983
         nl-SK-A-3924
         nl-SK-A-3246
+
         """
     )
 
@@ -109,10 +112,11 @@ def test_select(pyolin):
         input_=File("data_jq_example_rkm.json"),
         output_format="awk",
     )
-    assert output == (
-        """\
+    assert output == string_block(
+        """
         nl-SK-C-5
         nl-SK-A-3924
+
         """
     )
 
@@ -136,13 +140,14 @@ def test_string_match(pyolin):
         input_=File("data_jq_example_rkm.json"),
         output_format="jsonl",
     )
-    assert output == (
-        """\
+    assert output == string_block(
+        """
         {"id": "nl-SK-C-5", "artist": "Rembrandt Harmensz. van Rijn"}
         {"id": "nl-SK-A-180", "artist": "Gerard van Honthorst"}
         {"id": "nl-SK-A-2205", "artist": "Gerrit van Vucht"}
         {"id": "nl-SK-A-1935", "artist": "Rembrandt Harmensz. van Rijn"}
         {"id": "nl-SK-A-3246", "artist": "Adriaen van Ostade"}
+
         """
     )
 
@@ -163,10 +168,12 @@ def test_create_new_object(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        r"""
-        {"id": "nl-SK-C-5", "title": "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019"}
-        {"id": "nl-SK-A-1505", "title": "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019"}
-        """,  # noqa: E501,
+        string_block(
+            r"""
+            {"id": "nl-SK-C-5", "title": "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019"}
+            {"id": "nl-SK-A-1505", "title": "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019"}
+            """,  # noqa: E501,
+        ),
     )
 
 
@@ -183,10 +190,12 @@ def test_create_array(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        r"""
-        ["nl-SK-C-5", "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019"]
-        ["nl-SK-A-1505", "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019"]
-        """,  # noqa: E501,
+        string_block(
+            r"""
+            ["nl-SK-C-5", "Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de \u2018Nachtwacht\u2019"]
+            ["nl-SK-A-1505", "Een molen aan een poldervaart, bekend als \u2018In de maand juli\u2019"]
+            """,  # noqa: E501,
+        ),
     )
 
 
@@ -207,10 +216,12 @@ def test_output_csv(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        """\
-        nl-SK-C-5,"Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de ‘Nachtwacht’",Rembrandt Harmensz. van Rijn,http://lh6.ggpht.com/ZYWwML8mVFonXzbmg2rQBulNuCSr3rAaf5ppNcUc2Id8qXqudDL1NSYxaqjEXyDLSbeNFzOHRu0H7rbIws0Js4d7s_M=s0\r
-        nl-SK-A-1505,"Een molen aan een poldervaart, bekend als ‘In de maand juli’",Paul Joseph Constantin Gabriël,http://lh4.ggpht.com/PkQr-nNqzn0OVXVd4-hdJ6PPdWZ6-DQ_74WfBT3MZIV4LNYA-q8LUrtReXNstuzl9k6gKWkaBwG-LcFZ7zWU9Ch92g=s0\r
-        """,  # noqa: E501,
+        string_block(
+            """
+            nl-SK-C-5,"Schutters van wijk II onder leiding van kapitein Frans Banninck Cocq, bekend als de ‘Nachtwacht’",Rembrandt Harmensz. van Rijn,http://lh6.ggpht.com/ZYWwML8mVFonXzbmg2rQBulNuCSr3rAaf5ppNcUc2Id8qXqudDL1NSYxaqjEXyDLSbeNFzOHRu0H7rbIws0Js4d7s_M=s0\r
+            nl-SK-A-1505,"Een molen aan een poldervaart, bekend als ‘In de maand juli’",Paul Joseph Constantin Gabriël,http://lh4.ggpht.com/PkQr-nNqzn0OVXVd4-hdJ6PPdWZ6-DQ_74WfBT3MZIV4LNYA-q8LUrtReXNstuzl9k6gKWkaBwG-LcFZ7zWU9Ch92g=s0\r
+            """,  # noqa: E501,
+        ),
     )
 
 
@@ -232,10 +243,12 @@ def test_one_row_per_tweet(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        """\
-        {"id": 501064141332029440, "hashtags": [{"indices": [41, 50], "text": "Ferguson"}]}
-        {"id": 501064171707170816, "hashtags": [{"indices": [139, 140], "text": "Ferguson"}]}
-        """,
+        string_block(
+            """
+            {"id": 501064141332029440, "hashtags": [{"indices": [41, 50], "text": "Ferguson"}]}
+            {"id": 501064171707170816, "hashtags": [{"indices": [139, 140], "text": "Ferguson"}]}
+            """,
+        ),
     )
 
 
@@ -264,14 +277,16 @@ def test_text_of_hashtags(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        """\
-        {"id": 501064141332029440, "hashtags": "Ferguson"}
-        {"id": 501064171707170816, "hashtags": "Ferguson"}
-        {"id": 501064180468682752, "hashtags": "Ferguson"}
-        {"id": 501064194309906436, "hashtags": "USNews"}
-        {"id": 501064196931330049, "hashtags": "Ferguson"}
-        {"id": 501064196931330049, "hashtags": "MikeBrown"}
-        """,
+        string_block(
+            """
+            {"id": 501064141332029440, "hashtags": "Ferguson"}
+            {"id": 501064171707170816, "hashtags": "Ferguson"}
+            {"id": 501064180468682752, "hashtags": "Ferguson"}
+            {"id": 501064194309906436, "hashtags": "USNews"}
+            {"id": 501064196931330049, "hashtags": "Ferguson"}
+            {"id": 501064196931330049, "hashtags": "MikeBrown"}
+            """,
+        ),
     )
 
 
@@ -290,14 +305,16 @@ def test_delimiting_with_semicolon(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        """\
-        {"id": 501064141332029440, "hashtags": "Ferguson"}
-        {"id": 501064171707170816, "hashtags": "Ferguson"}
-        {"id": 501064180468682752, "hashtags": "Ferguson"}
-        {"id": 501064188211765249, "hashtags": ""}
-        {"id": 501064194309906436, "hashtags": "USNews"}
-        {"id": 501064196931330049, "hashtags": "Ferguson;MikeBrown"}
-        """,
+        string_block(
+            """
+            {"id": 501064141332029440, "hashtags": "Ferguson"}
+            {"id": 501064171707170816, "hashtags": "Ferguson"}
+            {"id": 501064180468682752, "hashtags": "Ferguson"}
+            {"id": 501064188211765249, "hashtags": ""}
+            {"id": 501064194309906436, "hashtags": "USNews"}
+            {"id": 501064196931330049, "hashtags": "Ferguson;MikeBrown"}
+            """
+        ),
     )
 
 
@@ -318,14 +335,16 @@ def test_twitter_output_csv(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        """\
-        501064141332029440,Ferguson\r
-        501064171707170816,Ferguson\r
-        501064180468682752,Ferguson\r
-        501064188211765249,\r
-        501064194309906436,USNews\r
-        501064196931330049,Ferguson;MikeBrown\r
-        """,
+        string_block(
+            """
+            501064141332029440,Ferguson\r
+            501064171707170816,Ferguson\r
+            501064180468682752,Ferguson\r
+            501064188211765249,\r
+            501064194309906436,USNews\r
+            501064196931330049,Ferguson;MikeBrown\r
+            """,
+        ),
     )
 
 
@@ -343,14 +362,16 @@ def test_one_row_per_hashtag(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        """\
-        501064141332029440,Ferguson\r
-        501064171707170816,Ferguson\r
-        501064180468682752,Ferguson\r
-        501064194309906436,USNews\r
-        501064196931330049,Ferguson\r
-        501064196931330049,MikeBrown\r
-        """,
+        string_block(
+            """
+            501064141332029440,Ferguson\r
+            501064171707170816,Ferguson\r
+            501064180468682752,Ferguson\r
+            501064194309906436,USNews\r
+            501064196931330049,Ferguson\r
+            501064196931330049,MikeBrown\r
+            """,
+        ),
     )
 
 
@@ -371,16 +392,18 @@ def test_group_by_user(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        r"""
-        [
-          [
-            {
-              "contributors": null,
-              "truncated": false,
-              "text": "Gobernador dice que el toque de queda en #Ferguson por disturbios raciales podr\u00eda durar d\u00edas http://t.co/doAajeQkom",
-              "is_quote_status": false,
-              "in_reply_to_status_id": null,
-        """,  # noqa: E501
+        string_block(
+            r"""
+            [
+              [
+                {
+                  "contributors": null,
+                  "truncated": false,
+                  "text": "Gobernador dice que el toque de queda en #Ferguson por disturbios raciales podr\u00eda durar d\u00edas http://t.co/doAajeQkom",
+                  "is_quote_status": false,
+                  "in_reply_to_status_id": null,
+            """,  # noqa: E501
+        ),
     )
 
 
@@ -413,16 +436,18 @@ def test_create_table_of_users(pyolin):
     assert_startswith(
         output.getvalue(),
         # Expected values are not the same as in the guide, because the group_by order is different.
-        """
-        851336634,20mUsa,15643,501064141332029440\r
-        53158947,MzDivah67,5661,501064171707170816\r
-        619587350,BrookLyn1825,1208,501064180468682752\r
-        374346913,I_Mpower,3390,501064188211765249\r
-        2272978051,Vorarlberg1,490,501064194309906436\r
-        278298244,bookishshelly,186,501064196931330049\r
-        1112443196,deegerwiilen,1356,501064197396914176\r
-        21811025,mmaureen7,1705,501064197632167936\r
-        """,
+        string_block(
+            """
+            851336634,20mUsa,15643,501064141332029440\r
+            53158947,MzDivah67,5661,501064171707170816\r
+            619587350,BrookLyn1825,1208,501064180468682752\r
+            374346913,I_Mpower,3390,501064188211765249\r
+            2272978051,Vorarlberg1,490,501064194309906436\r
+            278298244,bookishshelly,186,501064196931330049\r
+            1112443196,deegerwiilen,1356,501064197396914176\r
+            21811025,mmaureen7,1705,501064197632167936\r
+            """,
+        ),
     )
 
 
@@ -449,16 +474,18 @@ def test_count_hashtags(pyolin):
     assert_startswith(
         output.getvalue(),
         # Expected values are not the same as in the guide, because the group_by order is different.
-        """
-        Ferguson,8\r
-        USNews,1\r
-        MikeBrown,1\r
-        tcot,1\r
-        uniteblue,1\r
-        teaparty,1\r
-        gop,1\r
-        PoliceBrutality,1\r
-        """,
+        string_block(
+            """
+            Ferguson,8\r
+            USNews,1\r
+            MikeBrown,1\r
+            tcot,1\r
+            uniteblue,1\r
+            teaparty,1\r
+            gop,1\r
+            PoliceBrutality,1\r
+            """,
+        ),
     )
 
 
@@ -478,10 +505,12 @@ def test_filter_before_counting(pyolin):
     )
     assert_startswith(
         output.getvalue(),
-        """
-        Ferguson,1\r
-        MikeBrown,1\r
-        """,
+        string_block(
+            """
+            Ferguson,1\r
+            MikeBrown,1\r
+            """,
+        ),
     )
 
 
@@ -501,7 +530,9 @@ def test_count_total_tweets_per_user(pyolin):
     )
     assert_contains(
         output.getvalue(),
-        """
-        278298244,225\r
-        """,
+        string_block(
+            """
+            278298244,225\r
+            """
+        ),
     )
