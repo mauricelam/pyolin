@@ -1,6 +1,5 @@
 """Utility functions."""
 
-import abc
 import collections.abc
 import functools
 import itertools
@@ -19,6 +18,7 @@ from typing import (
     Tuple,
     TypeVar,
     Union,
+    overload,
 )
 import typing
 
@@ -149,28 +149,29 @@ class ItemDict(dict):
             raise KeyError(key) from None
 
 
-I = TypeVar("I")
+T = TypeVar("T")
 
 
-class Item(Generic[I]):
+class Item(Generic[T]):
     """An Item that is defined by a function, which will be initialized when this item is used,
     typically from ItemDict."""
 
-    def __init__(self, func: Callable[..., I]):
+    def __init__(self, func: Callable[[], T]):
         self.func = func
 
-    def __call__(self, *arg, **kwargs) -> I:
+    def __call__(self, *arg, **kwargs) -> T:
         return self.func(*arg, **kwargs)
 
 
-class LazyItem(Item[I]):
+class CachedItem(Item[T]):
     """
-    Item for ItemDict that is evaluated on demand.
+    Item for ItemDict that caches its result, such that the given function is
+    called only on the first time the item is accessed.
     """
 
     def __init__(
         self,
-        func: Callable[..., I],
+        func: Callable[[], T],
         *,
         on_accessed: Optional[Callable[[], None]] = None,
     ):
@@ -179,13 +180,23 @@ class LazyItem(Item[I]):
         self._cached = False
         self._on_accessed = on_accessed
 
-    def __call__(self, *arg, **kwargs) -> I:
+    def __call__(self, *arg, **kwargs) -> T:
         if not self._cached:
             self._val = super().__call__(*arg, **kwargs)
             if self._on_accessed:
                 self._on_accessed()
             self._cached = True
-        return typing.cast(I, self._val)
+        return typing.cast(T, self._val)
+
+
+@overload
+def peek_iter(iterator: Sequence[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:
+    ...
+
+
+@overload
+def peek_iter(iterator: Iterator[T], num: int) -> Tuple[Sequence[T], Iterator[T]]:
+    ...
 
 
 def peek_iter(iterator: Iterable[T], num: int) -> Tuple[Sequence[T], Iterable[T]]:
@@ -239,3 +250,25 @@ def clean_close_stdout_and_stderr() -> None:
                 sys.stderr.flush()
             finally:
                 sys.stderr.close()
+
+
+T = TypeVar("T")
+_SENTINEL = object()
+
+
+class ReplayIter(Iterator[T]):
+
+    def __init__(self, iterator: Iterator[T]):
+        self._curval: Union[T, object] = _SENTINEL
+        self._iter: Iterator[T] = iterator
+
+    def __next__(self) -> T:
+        self._curval = next(self._iter)
+        return typing.cast(T, self._curval)
+
+    def current_or_first_value(self) -> T:
+        return typing.cast(T, self._curval) if self._curval is not _SENTINEL else next(self)
+
+    def has_multiple_items(self) -> bool:
+        preview, self._iter = peek_iter(self._iter, 2)
+        return len(preview) == 2

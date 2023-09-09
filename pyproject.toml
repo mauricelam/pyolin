@@ -20,7 +20,8 @@ dependencies = [
     "hashbang >= 0.1.14",
 ]
 optional-dependencies.dev = [
-    "pandas"
+    "pandas",
+    "pytest",
 ]
 
 [project.scripts]

@@ -2,9 +2,9 @@
 import abc
 import itertools
 from itertools import zip_longest
-from typing import Iterable, Optional, TypeVar
+from typing import Iterable, Optional, TypeVar, Union
 
-from .field import Field
+from .field import DeferredType
 from .util import StreamingSequence, cache
 
 
@@ -27,18 +27,30 @@ class HasHeader:
 class Record(tuple):
     """A record (a.k.a. a row) in the output result."""
 
-    def __new__(cls, *args, recordstr="", header: Optional["Header"] = None):
-        _ = recordstr  # Only used in __init__
+    def __new__(
+        cls,
+        *args,
+        source: Union[bytes, DeferredType],
+        header: Optional["Header"] = None,
+    ):
+        _ = source  # Only used in __init__
         return super().__new__(
             cls,
             tuple(
-                Field(f, header=h) for f, h in zip_longest(args, header or ())
-            ),  # type: ignore
+                Field(f, header=h) for f, h in zip_longest(args, header or ())  # type: ignore
+            ),
         )
 
-    def __init__(self, *args, recordstr="", header: Optional["Header"] = None):
+    def __init__(
+        self,
+        *args,
+        source: Union[bytes, DeferredType],
+        header: Optional["Header"] = None,
+    ):
         _ = header, args  # Only used in __new__
-        self.str = recordstr
+        self.source: DeferredType = (
+            DeferredType(source) if not isinstance(source, DeferredType) else source
+        )
         self.num: int = -1
 
     def set_num(self, num: int):
@@ -50,11 +62,17 @@ class Record(tuple):
         """Whether this is the first record in the sequence."""
         return self.num == 0
 
+    @property
+    def str(self) -> str:
+        """Converts this record to str."""
+        return self.source.str
+
 
 class Header(Record):
     """A header row. Structurally this is the same as a Record, but the type
     marks it for special treatment in certain printers (e.g. in Markdown
-    formatting.)"""
+    formatting). A header row contains multiple Fields, but the Fields will
+    never have its header field set."""
 
 
 T = TypeVar("T")
@@ -75,3 +93,14 @@ class RecordSequence(StreamingSequence[T], HasHeader):
             return firstrow
         else:
             return None
+
+
+class Field(DeferredType):
+    """Represents a field in a parsed input data table."""
+
+    def __new__(cls, content, *, header: Optional["Field"] = None):
+        return super().__new__(cls, content)
+
+    def __init__(self, content, *, header: Optional["Field"] = None):
+        super().__init__(content)
+        self.header = header

@@ -77,40 +77,66 @@ records (lines). Each record is then consisted of many fields (columns).
 The separator for records and fields are configurable through the
 `--record_separator` and `--field_separator` options.
 
-Available variables:
-  - Record scoped:
-    - `record`, `fields` - A tuple of the fields in the current line.
-        Additionally, `record.str` gives the original string of the given
-        line before processing.
-    - `line` – Alias for `record.str`.
+### Scope
 
-    When referencing a variable in record scope, `prog` must not access
-    any other variables in table scope. In this mode, pyolin iterates through
-    each record from the input file and prints the result of `prog`.
+It is possible for the Pyolin program to run multiple times over an
+iterable sequence of data, called a scope. `record` is a scope that runs
+the given program multiple times based on the parser, for example.
 
-  - Table scoped:
-    - `records` – A sequence of records (as described in "Record scoped"
-        section above).
-    - `lines` – A sequence of lines (as described in "Record scoped" section
-        above).
+Only one scope can be accessed in a Pyolin program. An exception will be
+raised if multiple scopes are mixed.
+
+### Available variables
+
+ - Record parsing (for table-like data):
+    - `records` – Parses the input data into a sequence of records according
+        to `cfg.parser`, and generates this `records` sequence. Each
+        record is a tuple (often parsed from one line) that consists of
+        many fields (columns). The separator for records and fields are
+        configurable through the `--record_separator` and
+        `--field_separator` options.
+    - `record`, `fields` – A scope that will run the given program
+        iteratively for each record. Additionally, `record.source` gives the
+        original string of the given line before processing.
+  - Line by line
+    - `lines` – A sequence of lines separated by the newline character. For
+        other line separators, use `contents.split(separator)`.
+    - `line` – A scoped version of `lines` that iterates over each line,
+        running the Pyolin program repeatedly.
+    - File scope:
     - `file`, `contents` – Contents of the entire file as a single string.
     - `df` – Contents of the entire file as a pandas.DataFrame. (Available
         only if pandas is installed).
+    - JSON scope:
+    - `jsonobjs` – Reads one or more concatenated JSON objects from the
+        input file.
+    - `jsonobj` – Scoped version of `jsonobjs`. Note that if the input data
+        contains only one JSON object, the result will return a single item
+        rather than a sequence. To always return a sequence, use
+        `foo(jsonobj) for jsonobj in jsonobjs`, or to always return a single
+        value, use `jsonobj[0]`.
   - General:
     - `filename` – The name of the file being processed, possibly None if
         reading from stdin.
-  - Assignable fields:
-    - `header` – A tuple that contains the headers of the columns in the
-        output data. This assumes the output format is a table (list of tuples).
-        If `None` (the default) and the header cannot be inferred from the input
-        data, the columns will be numbered from zero.
-    - `parser` – A parser instance that is used to parse the data. Any changes
-        made to this field must be made before the input file contents are accessed.
-        See the Parsers section for more.
-    - `printer` – A printer instance that determines the format of the output data.
-        See the Printers section for more.
-  - Modules:
-    - `re`, `csv`, `pd` (pandas), `np` (numpy)
+    - `cfg` – The Pyolin program configuration that can configure various
+        beahviors of the program
+        - `cfg.header` – A tuple that contains the headers of the columns in
+        the output data. This assumes the output format is a table (list of
+        tuples).
+        If `None` (the default) and the header cannot be inferred from the
+        input data, the columns will be numbered from zero.
+        - `cfg.parser` – A parser instance that is used to parse the data. Any
+        changes made to this field must be made before the input file
+        contents are accessed.
+            See the Parsers section for more.
+        - `cfg.printer` – A printer instance that determines the format of the
+        output data.
+            See the Printers section for more.
+    - Common module aliases
+        - `pd` – pandas.
+        - `np` – numpy.
+        - All other modules can be directly referenced by name without
+            explicitly using an import statement.
 
 ## Parsers
 
@@ -119,10 +145,10 @@ Available variables:
 A parser that automatically detects the input data format. Supports JSON, field separated text (awk style), CSV, and TSV. The input detection logic is roughly as follows:
 - If the input data contains a relatively uniform number of comma or tab delimiters, parse as CSV / TSV
 - If the input data starts with '{' or '[', try to parse as JSON
-- Otherwise, treat as `awk`.
+- Otherwise, treat as `txt`.
 
-### `awk`
-alias: `unix`
+### `txt`
+alias: `awk`, `unix`
 
 An input format parser that is similar to Awk's parsing strategy. It reads until the `record_separator` is found (default: `'\n'`), and for each record, it assumes the fields are separated by the `field_separator` (default: `' '` or `'\t'`). Regular expressions are allowed for both `record_separator` and `field_separator` for this parser.
 
@@ -138,20 +164,16 @@ __`csv_excel`, `csv_unix`__: Similar to `csv`, but parsed using the given dialec
 
 Treats the input file as JSON. This parser does not support streaming (the entire JSON content needs to be loaded into memory first).
 
-### `binary`
-
-Treats the input file as binary. The input file will be read in binary mode. `records`, `lines`, `df`, and other variables derived from these are not available when using this parser.
-
 ## Printers
 
 ### `auto`
 
-Automatically detect the suitable output format for best human-readability depending on the result data type. If the result datatype is table-like, this will be printed in a markdown table. Otherwise, if result is a complex dict or list, it will be printed in JSON. Otherwise, this will be printed in the "Awk" format.
+Automatically detect the suitable output format for best human-readability depending on the result data type. If the result datatype is table-like, this will be printed in a markdown table. Otherwise, if result is a complex dict or list, it will be printed in JSON. Otherwise, this will be printed in the "txt" format.
 
-### `awk`
-alias: `unix`
+### `txt`
+alias: `awk`, `unix`
 
-A printer that mimics the behavior of Awk. By default it prints each record in a new line, where each field within a record is separated by a space. The separators can be modified by setting the corresponding fields of the printer. e.g. `printer.field_separator = ","` or `printer.record_separator = "\r\n"`
+A printer that prints out the records in text format, similar to Awk. By default it prints each record in a new line, where each field within a record is separated by a space. The separators can be modified by setting the corresponding fields of the printer. e.g. `printer.field_separator = ","` or `printer.record_separator = "\r\n"`
 
 ### `csv`
 
@@ -160,25 +182,33 @@ A printer that prints the data out in CSV format. This uses the [`excel` dialect
 __`tsv`__: Same as `csv` but uses tabs as the delimiter.
 
 ### `markdown`
-alias: `table`
+alias: `md`, `table`
 
-A printer that prints the data out in [markdown table format](https://www.markdownguide.org/extended-syntax/#tables). Note that this does not always print out a valid markdown table if the result data does not conform. For example, if the header has fewer number of fields than the data itself, the data will still be printed without a corresponding header, but depending on the markdown parser, that may be ignored or rejected. Similarly, if the resulting data is an empty list, it will print out only the header and divider rows, which is not a valid markdown table.
+Prints the data out in [markdown table format](https://www.markdownguide.org/extended-syntax/#tables). Note that this does not always print out a valid markdown table if the result data does not conform. For example, if the header has fewer number of fields than the data itself, the data will still be printed without a corresponding header, but depending on the markdown parser, that may be ignored or rejected. Similarly, if the resulting data is an empty list, it will print out only the header and divider rows, which is not a valid markdown table.
 
 ### `json`
 
-A printer that prints the data out in JSON format. The output JSON will be an array, and each record will be treated as an object, where the key is the header label.
+Prints the data out in JSON format. The output JSON will be an array, and each record will be treated as an object, where the key is the header label.
+
+### `jsonl`
+
+Prints out the data in JSON-lines format, where each line is a valid JSON value.
 
 ### `repr`
 
-A printer that prints the result out using the Python built-in `repr` function.
+Prints the result out using the Python built-in `repr` function.
 
 ### `str`
 
-A printer that prints the result out using the Python built-in `str` function.
+Prints the result out using the Python built-in `str` function.
 
 ### `binary`
 
-A printer that writes the raw binary the result, expected to be bytes or bytearray, to stdout.
+Prints the raw binary the result, expected to be bytes or bytearray, to stdout. Typically piped to another command since the output may contain non-printable characters or special escape sequences.
+
+## Working with additional packages inside virtual env
+
+When `pyolin` is installed inside a virtual environment, for example using `pipx`, additional packages can be installed through the shortcut `pyolin pip install <package>`.
 
 ## Motivation for creating Pyolin
 

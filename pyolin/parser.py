@@ -6,7 +6,7 @@ import token
 import tokenize
 import traceback
 from types import CodeType
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Sequence, Tuple
 import typing
 
 from .util import debug, NoMoreRecords
@@ -15,6 +15,17 @@ from .util import debug, NoMoreRecords
 def _split_last_statement(
     tokens: Iterable[tokenize.TokenInfo], prog: str
 ) -> Tuple[int, int]:
+    """
+    Split the last statement from the given token and program. The second part
+    of the split should be an expression that evaluates to a value.
+
+    Returns the start and end indices in `prog` of the token that separates the
+    last statement.
+    """
+    has_yield = any(t.string == 'yield' for t in tokens)
+    if has_yield:
+        return len(prog), len(prog)
+
     def _line_pos_to_pos(linepos):
         line, pos = linepos
         offset = 0
@@ -34,7 +45,7 @@ def _split_last_statement(
 
 def _replace_double_semicolons(
     tokens: Iterable[tokenize.TokenInfo],
-) -> Iterable[tokenize.TokenInfo]:
+) -> Sequence[tokenize.TokenInfo]:
     double_semis = []
     last_semi = False
     tokens = list(tokens)
@@ -57,7 +68,7 @@ def _replace_with_newline(tokens: List[tokenize.TokenInfo], pos: int) -> None:
     tok = tokens[pos]
     tokens[pos] = tokenize.TokenInfo(token.NEWLINE, "\n", tok.start, tok.end, tok.line)
     line_offset = 0
-    for i, tok2 in enumerate(tokens[pos + 1 :]):
+    for i, tok2 in enumerate(tokens[pos + 1:]):
         if i == 0:
             line_offset = tok2.start[1]
         if tok2.start[0] != tok.start[0]:
@@ -122,8 +133,8 @@ def _parse(prog: str) -> Tuple[ast.Module, ast.Expression]:
                 raise RuntimeError(
                     textwrap.dedent(
                         f"""\
-                    Cannot evaluate value from statement:
-                      {prog_expr}"""
+                        Cannot evaluate value from statement:
+                          {prog_expr}"""
                     )
                 ) from None
     debug(ast.dump(eval_expr))

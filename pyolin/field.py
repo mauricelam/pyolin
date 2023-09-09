@@ -1,16 +1,43 @@
-from typing import Any, Iterable, Optional, Tuple, Union
+import math
+from typing import Any, Tuple, Union
 
 
 Number = Union[int, float]
 Boolean = bool
 
 
-class Field(str):
-    def __new__(cls, content, *, header: Optional[Iterable[str]]):
+class DeferredType(str):
+    """A string that defers typing itself to wait for more information based on
+    the operations performed on it. This type will try to coerce itself into
+    numeric types when multiplication is requested, for example.
+
+    In order to explicitly type this, use `.int`, `.bool`, `.str`, or
+    `.bytes`."""
+
+    def __new__(cls, content: Union['DeferredType', str, bytes, None]):
+        if isinstance(content, DeferredType):
+            return content
+        elif isinstance(content, (bytes, bytearray)):
+            return super().__new__(cls, content.decode("utf-8", errors="replace"))
+        elif content is None:
+            return super().__new__(cls, '')
         return super().__new__(cls, content)
 
-    def __init__(self, content, *, header: Optional[Iterable[str]]):
-        self.header = header
+    def __init__(self, content: Union['DeferredType', str, bytes, None]):
+        if isinstance(content, DeferredType):
+            self.source = content.source
+            self.is_valid_str = content.is_valid_str
+        elif isinstance(content, str):
+            self.source = content
+            self.is_valid_str = True
+        else:
+            self.source = content
+            if content is not None:
+                try:
+                    content.decode("utf-8")
+                    self.is_valid_str = True
+                except UnicodeDecodeError:
+                    self.is_valid_str = False
 
     def _isnumber(self):
         try:
@@ -35,12 +62,11 @@ class Field(str):
         "other" type, perform the coercion. Otherwise use the super
         implementation.
         """
-        if isinstance(other, Field) and self._isnumber() and other._isnumber():
+        if isinstance(other, DeferredType) and self._isnumber() and other._isnumber():
             return self._coerce_to_number(), other._coerce_to_number()
-        elif isinstance(other, (int, float)):
+        if isinstance(other, (int, float)):
             return self._coerce_to_number(), other
-        else:
-            return super(), other
+        return super(), other
 
     def _coerce_with_fallback(self, other: Any) -> Tuple[Union[Number, str], Any]:
         """
@@ -51,7 +77,7 @@ class Field(str):
         try:
             return self._coerce_assuming_numeric(other)
         except ValueError:
-            return super(), other
+            return self.str, other
 
     def _coerce_assuming_numeric(self, other):
         """
@@ -59,8 +85,8 @@ class Field(str):
         successfully converted to numeric types. An exception will be thrown
         if the coercion failed.
         """
-        if isinstance(other, Field):
-            other = other._coerce_to_number()
+        if isinstance(other, DeferredType):
+            other = other._coerce_to_number()  # pylint:disable=protected-access
         return self._coerce_to_number(), other
 
     def __gt__(self, other):
@@ -89,7 +115,10 @@ class Field(str):
 
     def __radd__(self, other):
         modified_self, modified_other = self._coerce_with_type_check(other)
-        return modified_self.__radd__(modified_other)  # type: ignore
+        if isinstance(modified_self, super):
+            return modified_other + self.str
+        else:
+            return modified_self.__radd__(modified_other)  # type: ignore
 
     def __sub__(self, other):
         modified_self, modified_other = self._coerce_assuming_numeric(other)
@@ -208,38 +237,52 @@ class Field(str):
         return self._coerce_to_number().__round__(*args)
 
     def __floor__(self):
-        return self._coerce_to_number().__floor__()
+        return math.floor(self._coerce_to_number())
 
     def __ceil__(self):
-        return self._coerce_to_number().__ceil__()
+        return math.ceil(self._coerce_to_number())
 
     def __bytes__(self):
-        return self.encode("utf-8")
+        return self.bytes
 
     def __hash__(self):
         return hash(str(self))
 
+    def __bool__(self):
+        return self.bool
+
+    def __len__(self):
+        if not self.is_valid_str:
+            raise TypeError('Cannot get length of str containing non-UTF8')
+        return super().__len__()
+
     @property
     def bool(self) -> bool:
+        """Converts this deferred type to a boolean."""
         if self.lower() in ("true", "t", "y", "yes", "1", "on"):
             return True
-        elif self.lower() in ("false", "f", "n", "no", "0", "off"):
+        if self.lower() in ("false", "f", "n", "no", "0", "off"):
             return False
-        else:
-            raise ValueError(f'Cannot convert "{self}" to bool')
+        raise ValueError(f'Cannot convert "{self}" to bool')
 
     @property
     def int(self) -> int:
+        """Converts this deferred type to an int."""
         return int(self)
 
     @property
     def float(self) -> float:
+        """Converts this deferred type to a float."""
         return float(self)
 
     @property
     def str(self) -> str:
+        """Convers this deferred type to a string."""
         return str(self)
 
     @property
     def bytes(self) -> bytes:
-        return bytes(self)
+        """Converts the data to bytes"""
+        if isinstance(self.source, bytes):
+            return self.source
+        return super().encode("utf-8")

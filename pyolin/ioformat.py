@@ -4,19 +4,19 @@ import abc
 import collections
 import collections.abc
 import csv
+from dataclasses import dataclass
 from math import floor
 import io
 import itertools
 from itertools import zip_longest
-import json
 import os
 import re
 import shutil
 import sys
 import textwrap
+import typing
 from typing import (
     Any,
-    Callable,
     Generator,
     Iterable,
     List,
@@ -28,9 +28,7 @@ from typing import (
     Union,
 )
 
-
-from .json_encoder import CustomJsonEncoder
-from .record import Record, Header, HasHeader
+from .record import Field, Record, Header, HasHeader
 from .util import (
     _UNDEFINED_,
     clean_close_stdout_and_stderr,
@@ -39,24 +37,20 @@ from .util import (
     peek_iter,
     tee_if_iterable,
 )
-from .field import Field
 from . import header_detector
 
 __all__ = [
     "AbstractParser",
-    "AutoParser",
-    "AwkParser",
+    "TxtParser",
     "CsvParser",
-    "JsonParser",
     "AutoPrinter",
     "create_parser",
     "PARSERS",
     "Printer",
     "AutoPrinter",
-    "AwkPrinter",
+    "TxtPrinter",
     "CsvPrinter",
     "MarkdownPrinter",
-    "JsonPrinter",
     "ReprPrinter",
     "StrPrinter",
     "BinaryPrinter",
@@ -65,15 +59,15 @@ __all__ = [
 ]
 
 
-class _LimitReached(Exception):
+class LimitReached(Exception):
     """Limit reached without seeing a delimiter"""
 
     def __init__(self, read_bytes: bytes):
         self.read_bytes = read_bytes
 
 
-def _gen_split(
-    stream: io.BytesIO, delimiter: str, *, limit: Optional[int] = None
+def gen_split(
+    stream: typing.BinaryIO, delimiter: str, *, limit: Optional[int] = None
 ) -> Generator[bytes, None, None]:
     """
     Read the stream "line by line", where line is defined by the delimiter.
@@ -92,7 +86,7 @@ def _gen_split(
         i += 1
         if limit and i > limit and not yielded:
             # If no lines found when the limit is hit, raise exception
-            raise _LimitReached(bytes(chunk))
+            raise LimitReached(bytes(chunk))
         if not chunk:
             if buf:
                 yield buf
@@ -118,7 +112,7 @@ class AbstractParser(abc.ABC):
         self.record_separator = record_separator
         self.field_separator = field_separator
 
-    def records(self, stream: io.BytesIO) -> Generator[Record, None, None]:
+    def records(self, stream: typing.BinaryIO) -> Generator[Record, None, None]:
         """A generator for records by a parser.
 
         It delegates to `gen_records` for most of the work, but will process it
@@ -129,79 +123,34 @@ class AbstractParser(abc.ABC):
         if self.has_header is None:
             # Try to automatically detect whether there is a header
             result, result2 = itertools.tee(result)
-            preview = itertools.islice((r for r, l in result2), 0, 10)
+            preview = itertools.islice((r for r in result2), 0, 10)
             has_header = header_detector.has_header(preview)
         if has_header:
             header = None
-            for i, (record, line) in enumerate(result):
+            for i, record in enumerate(result):
                 if not i:
-                    header = Header(*record, recordstr=line)
+                    header = Header(*[r for r in record], source=record.source)
                     yield header
                 else:
-                    yield Record(*record, recordstr=line, header=header)
+                    yield Record(
+                        *[r for r in record], source=record.source, header=header
+                    )
         else:
-            yield from (Record(*record, recordstr=line) for record, line in result)
+            yield from result
 
     @abc.abstractmethod
-    def gen_records(self, stream: io.BytesIO):
+    def gen_records(self, stream: typing.BinaryIO) -> Generator[Record, None, None]:
         """
-        Yields records in the format of (tuple, str)
+        Yields records in the format of (record, line_content)
         """
         raise NotImplementedError()
 
 
-class AutoParser(AbstractParser):
-    """
-    A parser that automatically detects the input data format.
-
-    Supports JSON, field separated text (awk style), CSV, and TSV.
-    """
-
-    def gen_records(
-        self, stream: io.BytesIO
-    ) -> Generator[Tuple[Iterable[str], str], None, None]:
-        # Note: This method returns a generator, instead of yielding by itself so that the parsing
-        # logic can run eagerly and set `self.has_header` before it is used.
-        try:
-            gen_lines = _gen_split(stream, self.record_separator, limit=4000)
-            sample, gen_lines = peek_iter(gen_lines, 5)
-            csv_parser = CsvParser(self.record_separator, self.field_separator)
-            csv_sniffer = csv_parser.sniff_heuristic(sample)
-            if csv_sniffer:
-                # Update field_separator to the detected delimiter
-                assert csv_parser.dialect
-                self.field_separator = csv_parser.dialect.delimiter
-                return csv_parser.gen_records_from_lines(gen_lines, csv_sniffer)
-            else:
-                json_parser = JsonParser(self.record_separator, self.field_separator)
-                gen_lines, gen_lines_for_json = itertools.tee(gen_lines)
-                sample, gen_lines_for_json = peek_iter(gen_lines_for_json, 1)
-                first_char: bytes = next(iter(sample), b"")[:1]
-                if first_char in (b"{", b"["):
-                    try:
-                        json_object = json.loads(
-                            self.record_separator.encode("utf-8").join(
-                                gen_lines_for_json
-                            )
-                        )
-                        self.has_header = True
-                        return json_parser.gen_records_from_json(json_object)
-                    except json.JSONDecodeError:
-                        pass
-                return AwkParser(
-                    self.record_separator, self.field_separator
-                ).gen_records_from_lines(gen_lines)
-        except _LimitReached:
-            raise RuntimeError(
-                "Unable to detect input format. Try specifying the input type with --input_format"
-            ) from None
-        except UnicodeDecodeError:
-            raise AttributeError(
-                "`record`-based attributes are not supported for binary inputs"
-            ) from None
+class UnexpectedDataFormat(RuntimeError):
+    """Error raised when the input data format is unexpected"""
 
 
-class AwkParser(AbstractParser):
+class TxtParser(AbstractParser):
     """A parser in the AWK style, which can be thought of as whitespace
     separated values. It splits the records by the `record_separator`, which is
     the newline charater by default, and splits the record into fields using the
@@ -210,27 +159,30 @@ class AwkParser(AbstractParser):
     def __init__(
         self,
         record_separator: str,
-        # For AwkParser, the field separator is a regex string.
+        # For TxtParser, the field separator is a regex string.
         field_separator: Optional[str],
     ):
         super().__init__(record_separator, field_separator or r"[ \t]+")
 
-    def gen_records(
-        self, stream: io.BytesIO
-    ) -> Generator[Tuple[List[str], str], None, None]:
+    def gen_records(self, stream: typing.BinaryIO) -> Generator[Record, None, None]:
         assert self.field_separator
-        gen_lines = _gen_split(stream, self.record_separator)
+        gen_lines = gen_split(stream, self.record_separator)
         return self.gen_records_from_lines(gen_lines)
 
     def gen_records_from_lines(
         self, gen_lines: Iterable[bytes]
-    ) -> Generator[Tuple[List[str], str], None, None]:
+    ) -> Generator[Record, None, None]:
         """Generates a record from the given iterable of lines."""
         assert self.field_separator
         try:
             for record_bytes in gen_lines:
-                record_str = record_bytes.decode("utf-8")
-                yield re.split(self.field_separator, record_str), record_str
+                if record_bytes:
+                    yield Record(
+                        *re.split(self.field_separator, record_bytes.decode("utf-8")),
+                        source=record_bytes,
+                    )
+                else:
+                    yield Record(*(), source=record_bytes)
         except UnicodeDecodeError:
             raise AttributeError(
                 "`record`-based attributes are not supported for binary inputs"
@@ -264,7 +216,7 @@ class CustomSniffer(csv.Sniffer):
         if self.dialect_doublequote_decided:
             return False
         assert self.dialect
-        if re.search(r'[^\\]""', line): # type: ignore
+        if re.search(r'[^\\]""', line):  # type: ignore
             self.dialect.doublequote = True
             return False
         if '\\"' in line:
@@ -345,10 +297,8 @@ class CsvParser(AbstractParser):
         self.dialect = sniffer.sniff(sample_str, delimiters=self.field_separator)
         return sniffer
 
-    def gen_records(
-        self, stream: io.BytesIO
-    ) -> Generator[Tuple[List[str], str], None, None]:
-        gen_lines = _gen_split(stream, self.record_separator)
+    def gen_records(self, stream: typing.BinaryIO) -> Generator[Record, None, None]:
+        gen_lines = gen_split(stream, self.record_separator)
         sniffer = None
         if self.dialect is None:
             preview, gen_lines = peek_iter(gen_lines, 5)
@@ -357,7 +307,7 @@ class CsvParser(AbstractParser):
 
     def gen_records_from_lines(
         self, gen_lines: Iterable[bytes], sniffer: Optional[CustomSniffer]
-    ) -> Generator[Tuple[List[str], str], None, None]:
+    ) -> Generator[Record, None, None]:
         """Generates the records from a given iterable of lines."""
         assert self.dialect
         csv_reader = CsvReader(self.dialect)
@@ -366,42 +316,16 @@ class CsvParser(AbstractParser):
             if sniffer and sniffer.update_dialect(line_str):
                 csv_reader.dialect = sniffer.dialect  # type: ignore
             fields = csv_reader.read(line_str)
-            yield fields, line_str
-
-
-class JsonParser(AbstractParser):
-    """A parser that parses table-like JSON objects. A JSON object is table-like
-    if it is an array of JSON objects, where each object is in the format `{
-    "column_name": value }."""
-
-    def __init__(self, record_separator: str, field_separator: Optional[str]):
-        super().__init__(record_separator, field_separator)
-        self.has_header = True
-
-    def gen_records_from_json(
-        self, json_object: Iterable[Any]
-    ) -> Generator[Tuple[Iterable[str], str], None, None]:
-        """Generates the records from a given iterable of JSON objects."""
-        for i, record in enumerate(json_object):
-            if not isinstance(record, dict):
-                raise TypeError("Input is not an array of objects")
-            if not i:
-                yield record.keys(), ""
-            yield record.values(), json.dumps(record)
-
-    def gen_records(self, stream: io.BytesIO):
-        json_object = json.load(stream)
-        return self.gen_records_from_json(json_object)
+            yield Record(*fields, source=line)
 
 
 PARSERS = {
-    "auto": AutoParser,
-    "awk": AwkParser,
+    "txt": TxtParser,
+    "awk": TxtParser,
     "csv": CsvParser,
     "csv_excel": lambda rs, fs: CsvParser(rs, fs, dialect=csv.excel),
     "csv_unix": lambda rs, fs: CsvParser(rs, fs, dialect=csv.unix_dialect),
     "tsv": lambda rs, fs: CsvParser(rs, "\t"),
-    "json": JsonParser,
 }
 
 
@@ -413,6 +337,12 @@ def create_parser(
         return PARSERS[input_format](record_separator, field_separator)
     except KeyError as exc:
         raise ValueError(f"Unknown input format {input_format}") from exc
+
+
+@dataclass
+class PrinterConfig:
+    header: Optional[Header] = None
+    suggested_printer: Optional[str] = None
 
 
 class Printer(abc.ABC):
@@ -429,39 +359,42 @@ class Printer(abc.ABC):
         else:
             return str(value)
 
-    def format_record(self, record) -> List[str]:
+    def format_record(self, record: Any) -> List[Union[str, Field]]:
         """Formats a record, which is a sequence of fields."""
         if isinstance(record, (str, bytes)):
             return [self.format_value(record)]
         elif isinstance(record, collections.abc.Iterable):
             if isinstance(record, dict):
-                record = record.items()
+                return [
+                    Field(self.format_value(v), header=Field(str(k)))
+                    for k, v in record.items()
+                ]
             return [self.format_value(i) for i in record]
         else:
             return [self.format_value(record)]
 
-    def _generate_header(self, first_column) -> Sequence[str]:
+    def _generate_header(self, first_row: Sequence[Any]) -> Sequence[str]:
         header = []
         has_real_header = False
-        for i, column in enumerate(first_column):
+        for i, column in enumerate(first_row):
             header_item = None
             if isinstance(column, Field):
-                if column.header:
+                if column.header is not None and column.header.str:
                     header_item = column.header
                     has_real_header = True
-            if not header_item:
-                if len(first_column) == 1:
+            if header_item is None:
+                if len(first_row) == 1:
                     header_item = "value"
                 else:
                     header_item = str(i)
             header.append(header_item)
-        return header if has_real_header else _SynthesizedHeader(header)
+        return header if has_real_header else SynthesizedHeader(header)
 
-    def print_result(self, result: Any, *, header: Optional[Header] = None):
+    def print_result(self, result: Any, config: PrinterConfig):
         """Prints the result out to stdout according to the concrete
         implementation."""
         try:
-            for line in self.gen_result(result, header=header):
+            for line in self.gen_result(result, config=config):
                 print(line, flush=True, end="")
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
@@ -472,85 +405,100 @@ class Printer(abc.ABC):
     ) -> Tuple[Sequence[str], Iterable[Any]]:
         """Turns the given `result` into a table format: (header, records)"""
         header = header or HasHeader.get(result)
-        if "pandas" in sys.modules and isinstance(result, sys.modules["pandas"].DataFrame):
-            header = header or _SynthesizedHeader([str(i) for i in result.columns])
+        if "pandas" in sys.modules and isinstance(
+            result, sys.modules["pandas"].DataFrame
+        ):
+            header = header or SynthesizedHeader([str(i) for i in result.columns])
             result = (self.format_record(row) for _, row in result.iterrows())
             return (header, result)
         elif isinstance(result, collections.abc.Iterable):
-            if isinstance(result, dict):
-                result = result.items()
             if isinstance(result, (str, Record, tuple, bytes)):
                 result = (self.format_record(result),)
                 header = header or self._generate_header(result[0])
                 return (header, result)
+            if isinstance(result, dict):
+                header = header or [str(k) for k in result.keys()]
+                result = (result.values(),)
             result = (self.format_record(r) for r in result if r is not _UNDEFINED_)
             result, result_tee = itertools.tee(result)
-            first_column = list(next(result_tee, []))
-            header = header or self._generate_header(first_column)
+            first_row = list(next(result_tee, []))
+            header = header or self._generate_header(first_row)
             return (header, result)
         else:
-            header = header or _SynthesizedHeader(["value"])
+            header = header or SynthesizedHeader(["value"])
             result = (self.format_record(result),)
             return (header, result)
 
     @abc.abstractmethod
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         """Generates a string to be printed to stdout. This string can be a
         partial result that is continued by the next yielded string from this
         generator."""
         raise NotImplementedError()
 
 
-I = TypeVar("I")
+ListItemType = TypeVar("ListItemType")
 
 
-class _SynthesizedHeader(List[I]):
+class SynthesizedHeader(List[ListItemType]):
     """A header that is synthesized (e.g. numbered 0, 1, 2), not from actual imput data"""
 
 
 class AutoPrinter(Printer):
     """A printer that automatically decides which format to print the results
     in."""
+
     _printer: Printer
 
-    def _infer_suitable_printer(self, result: Any) -> str:
+    def _infer_suitable_printer(
+        self, result: Any, suggested_printer: Optional[str]
+    ) -> str:
         if isinstance(result, dict):
             return "json"
         if "pandas" in sys.modules:
-            if isinstance(result, sys.modules['pandas'].DataFrame):
+            if isinstance(result, sys.modules["pandas"].DataFrame):
                 return "markdown"
+        if suggested_printer is not None:
+            return suggested_printer
         if isinstance(result, collections.abc.Iterable) and not isinstance(
             result, (str, Record, tuple, bytes)
         ):
             first_row = next(iter(result), None)
-            if isinstance(first_row, collections.abc.Sequence):
+            if isinstance(first_row, (dict, collections.abc.Sequence)):
                 if all(not is_list_like(cell) for cell in first_row):
                     return "markdown"
                 else:
                     return "json"
             else:
                 return "markdown"
-        return "awk"
+        return "txt"
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         tee_result, result = tee_if_iterable(result)
-        printer_str = self._infer_suitable_printer(tee_result)
+        printer_str = self._infer_suitable_printer(tee_result, config.suggested_printer)
         self._printer = new_printer(printer_str)
-        yield from self._printer.gen_result(result, header=header)
+        yield from self._printer.gen_result(result, config=config)
 
 
-class AwkPrinter(Printer):
+class TxtPrinter(Printer):
     """A printer that prints out the results in a space-separated format,
     similar to AWK."""
+
     def __init__(self):
         self.record_separator = "\n"
         self.field_separator = " "
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
-        header, table = self.to_table(result, header=header)
-        if not isinstance(header, _SynthesizedHeader):
+        header, table = self.to_table(result, header=config.header)
+        if not isinstance(header, SynthesizedHeader):
             yield self.field_separator.join(header) + self.record_separator
         for record in table:
             yield self.field_separator.join(record) + self.record_separator
@@ -558,16 +506,19 @@ class AwkPrinter(Printer):
 
 class CsvPrinter(Printer):
     """A printer that prints out the results in CSV format."""
+
     def __init__(self, *, print_header=False, delimiter=",", dialect=csv.excel):
         self.print_header = print_header
         self.delimiter = delimiter
         self.dialect = dialect
         self.writer = None
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
-        header, table_result = self.to_table(result, header=header)
+        header, table_result = self.to_table(result, header=config.header)
         output = io.StringIO()
         try:
             self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
@@ -592,8 +543,12 @@ class CsvPrinter(Printer):
 class _MarkdownRowFormat:
     def __init__(self, widths):
         self._width_formats = [f"{{:{w}}}" for w in widths]
-        self._row_template = "| " + " | ".join(self._width_formats) + " |"
-        self._cont_row_template = ": " + " : ".join(self._width_formats) + " :"
+        self._row_template = (
+            "| " + " | ".join(self._width_formats) + " |" if widths else "|"
+        )
+        self._cont_row_template = (
+            ": " + " : ".join(self._width_formats) + " :" if widths else ":"
+        )
         self._wrappers = [
             textwrap.TextWrapper(
                 width=w,
@@ -608,9 +563,9 @@ class _MarkdownRowFormat:
         """Formats the given list of cells in Markdown."""
         cell_lines = [
             wrapper.wrap(str(cell)) if wrapper else [cell]
-            for wrapper, cell in zip_longest(self._wrappers, cells) # type: ignore
+            for wrapper, cell in zip_longest(self._wrappers, cells)  # type: ignore
         ]
-        line_cells = zip_longest(*cell_lines, fillvalue="") # type: ignore
+        line_cells = zip_longest(*cell_lines, fillvalue="")  # type: ignore
         result = ""
         for i, line_cell in enumerate(line_cells):
             # If there are extra columns that are not found in the header, also print them out.
@@ -633,6 +588,7 @@ class MarkdownPrinter(Printer):
     """Prints the result in the markdown table format. Note that if the input
     data does not conform to a table-like structure (e.g. have different number
     of fields in different rows), the output may not be valid markdown."""
+
     def _allocate_width(self, header: Sequence[str], table):
         if sys.stdout.isatty():
             available_width, _ = shutil.get_terminal_size((100, 24))
@@ -667,72 +623,36 @@ class MarkdownPrinter(Printer):
                 break
         return [max(w, 1) for w in widths]
 
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
         if result is _UNDEFINED_:
             return
-        header, table_result = self.to_table(result, header=header)
-        table1, table2 = itertools.tee(table_result)
+        header, table_result = self.to_table(result, header=config.header)
+        table1, table2, table3 = itertools.tee(table_result, 3)
         widths = self._allocate_width(header, itertools.islice(table2, 10))
         row_format = _MarkdownRowFormat(widths)
-        if not header:
-            return
-        yield row_format.format(header)
-        yield "| " + " | ".join("-" * w for w in widths) + " |\n"
+        if not header and not any(True for _ in table3):
+            return  # Empty result, skip printing
+        if header:
+            # Edge case: don't print out an empty header
+            yield row_format.format(header)
+            yield "| " + " | ".join("-" * w for w in widths) + " |\n"
         for record in table1:
             yield row_format.format(record)
 
 
-class JsonPrinter(Printer):
-    """Prints the results out in JSON format.
-
-    If the result is table-like:
-        if input has header row: prints it out as array of objects.
-        else: prints it out in a 2D-array.
-    else:
-        Regular json.dumps()"""
-
-    def gen_result(self, result: Any, *, header=None) -> Generator[str, None, None]:
-        if result is _UNDEFINED_:
-            return
-        if is_list_like(result):
-            (peek_row,), result = peek_iter(result, 1)
-            if is_list_like(peek_row):
-                if not is_list_like(next(iter(peek_row), None)):
-                    header, table = self.to_table(result, header=header)
-                    if isinstance(header, _SynthesizedHeader):
-                        yield from CustomJsonEncoder(indent=4).iterencode(table)
-                        yield "\n"
-                        return
-                    else:
-                        yield "[\n"
-                        for i, record in enumerate(table):
-                            if i:
-                                yield ",\n"
-                            yield "    "
-                            yield from CustomJsonEncoder().iterencode(
-                                dict(zip(header, record))
-                            )
-                        yield "\n]\n"
-                        return
-            if header:
-                yield from CustomJsonEncoder(indent=4).iterencode(
-                    dict(zip(header, result))
-                )
-                yield "\n"
-                return
-        yield from CustomJsonEncoder(indent=4).iterencode(result)
-        yield "\n"
-
-
 class ReprPrinter(Printer):
     """Prints the result out using Python's `repr()` function."""
-    def gen_result(self, result, *, header=None):
+
+    def gen_result(self, result: Any, config: PrinterConfig):
         yield repr(result) + "\n"
 
 
 class StrPrinter(Printer):
     """Prints the result out using Python's `str()` function."""
-    def gen_result(self, result, *, header=None):
+
+    def gen_result(self, result: Any, config: PrinterConfig):
         result = str(result)
         if result:
             yield result + "\n"
@@ -741,15 +661,16 @@ class StrPrinter(Printer):
 class BinaryPrinter(Printer):
     """Writes the result as binary out to stdout. This is typically used when
     redirecting the output to a file or to another program."""
-    def gen_result(self, result, *, header=None):
+
+    def gen_result(self, result: Any, config: PrinterConfig):
         if isinstance(result, str):
             yield bytes(result, "utf-8")
         else:
             yield bytes(result)
 
-    def print_result(self, result, *, header=None):
+    def print_result(self, result: Any, config: PrinterConfig):
         try:
-            for line in self.gen_result(result, header=header):
+            for line in self.gen_result(result, config):
                 sys.stdout.buffer.write(line)
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
@@ -758,13 +679,14 @@ class BinaryPrinter(Printer):
 
 PRINTERS = {
     "auto": AutoPrinter,
-    "awk": AwkPrinter,
-    "unix": AwkPrinter,
+    "txt": TxtPrinter,
+    "awk": TxtPrinter,
+    "unix": TxtPrinter,
     "csv": CsvPrinter,
     "tsv": lambda: CsvPrinter(delimiter="\t"),
     "markdown": MarkdownPrinter,
+    "md": MarkdownPrinter,
     "table": MarkdownPrinter,
-    "json": JsonPrinter,
     "repr": ReprPrinter,
     "str": StrPrinter,
     "binary": BinaryPrinter,
