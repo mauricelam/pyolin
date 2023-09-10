@@ -1,12 +1,10 @@
 """
-Each plugin should have a function with the following signature:
-
-    def register(
-        ctx: PluginContext,
-        input_stream: Callable[[], ContextManager[typing.BinaryIO]],
-        config: PyolinConfig,
-    )
+See `PyolinPlugin` and `PluginContext` in the `core` module for details on how
+to write a plugin.
 """
+from typing import List
+
+from pyolin.core import PyolinPlugin
 from . import auto_parser, json, lines, argv, pip
 
-PLUGINS = [auto_parser, json, lines, argv, pip]
+PLUGINS: List[PyolinPlugin] = [auto_parser, json, lines, argv, pip]

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Any, Callable, Iterator, Optional, Union
+from typing import Any, Callable, ContextManager, Iterator, Optional, Protocol, Union
+import typing
 from pyolin.ioformat import (
     PARSERS,
     PRINTERS,
@@ -37,6 +38,16 @@ class PluginContext:
         field_separator)`.
         """
         PARSERS.update(parsers)
+
+
+class PyolinPlugin(Protocol):
+    @staticmethod
+    def register(
+        ctx: PluginContext,
+        input_stream: Callable[[], ContextManager[typing.BinaryIO]],
+        config: 'PyolinConfig',
+    ):
+        ...
 
 
 @dataclass
