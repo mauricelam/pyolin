@@ -23,7 +23,6 @@ from pyolin.core import PluginContext, PyolinConfig
 
 from .field import DeferredType
 from .ioformat import (
-    PARSERS,
     PRINTERS,
     Printer,
     new_printer,
@@ -172,7 +171,7 @@ def run(*args, **kwargs):
 
 @command(
     Argument("field_separator", aliases="F"),
-    Argument("input_format", choices=list(PARSERS)),
+    Argument("input_format"),
     Argument("output_format", choices=list(PRINTERS)),
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )

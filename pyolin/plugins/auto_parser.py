@@ -4,13 +4,13 @@ import typing
 from pyolin.ioformat import (
     AbstractParser,
     LimitReached,
-    CsvParser,
-    TxtParser,
     UnexpectedDataFormat,
     gen_split,
 )
 from pyolin.core import PluginContext
+from pyolin.plugins.csv_parser import CsvParser
 from pyolin.plugins.json import JsonParser
+from pyolin.plugins.txt_parser import TxtParser
 from pyolin.record import Record
 from pyolin.util import peek_iter
 
