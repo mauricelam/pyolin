@@ -3,17 +3,10 @@
 import abc
 import collections
 import collections.abc
-import csv
 from dataclasses import dataclass
-from math import floor
-import io
 import itertools
-from itertools import zip_longest
-import os
 import re
-import shutil
 import sys
-import textwrap
 import typing
 from typing import (
     Any,
@@ -23,35 +16,19 @@ from typing import (
     Optional,
     Sequence,
     Tuple,
-    Type,
     TypeVar,
     Union,
 )
 
 from .record import Field, Record, Header, HasHeader
-from .util import (
-    _UNDEFINED_,
-    clean_close_stdout_and_stderr,
-    debug,
-    is_list_like,
-    peek_iter,
-    tee_if_iterable,
-)
+from .util import _UNDEFINED_, clean_close_stdout_and_stderr
 from . import header_detector
 
 __all__ = [
     "AbstractParser",
-    "AutoPrinter",
-    "create_parser",
+    "new_parser",
     "PARSERS",
     "Printer",
-    "AutoPrinter",
-    "TxtPrinter",
-    "CsvPrinter",
-    "MarkdownPrinter",
-    "ReprPrinter",
-    "StrPrinter",
-    "BinaryPrinter",
     "new_printer",
     "PRINTERS",
 ]
@@ -148,11 +125,11 @@ class UnexpectedDataFormat(RuntimeError):
     """Error raised when the input data format is unexpected"""
 
 
-# See core.export_parsers
+# See PluginContext.export_parsers
 PARSERS = {}
 
 
-def create_parser(
+def new_parser(
     input_format: str, record_separator: str, field_separator: Optional[str]
 ) -> AbstractParser:
     """Creates a parser from the given `input_format`."""
@@ -266,254 +243,11 @@ ListItemType = TypeVar("ListItemType")
 
 
 class SynthesizedHeader(List[ListItemType]):
-    """A header that is synthesized (e.g. numbered 0, 1, 2), not from actual imput data"""
+    """A header that is synthesized (e.g. numbered 0, 1, 2), not from actual input data"""
 
 
-class AutoPrinter(Printer):
-    """A printer that automatically decides which format to print the results
-    in."""
-
-    _printer: Printer
-
-    def _infer_suitable_printer(
-        self, result: Any, suggested_printer: Optional[str]
-    ) -> str:
-        if isinstance(result, dict):
-            return "json"
-        if "pandas" in sys.modules:
-            if isinstance(result, sys.modules["pandas"].DataFrame):
-                return "markdown"
-        if suggested_printer is not None:
-            return suggested_printer
-        if isinstance(result, collections.abc.Iterable) and not isinstance(
-            result, (str, Record, tuple, bytes)
-        ):
-            first_row = next(iter(result), None)
-            if isinstance(first_row, (dict, collections.abc.Sequence)):
-                if all(not is_list_like(cell) for cell in first_row):
-                    return "markdown"
-                else:
-                    return "json"
-            else:
-                return "markdown"
-        return "txt"
-
-    def gen_result(
-        self, result: Any, config: PrinterConfig
-    ) -> Generator[str, None, None]:
-        tee_result, result = tee_if_iterable(result)
-        printer_str = self._infer_suitable_printer(tee_result, config.suggested_printer)
-        self._printer = new_printer(printer_str)
-        yield from self._printer.gen_result(result, config=config)
-
-
-class TxtPrinter(Printer):
-    """A printer that prints out the results in a space-separated format,
-    similar to AWK."""
-
-    def __init__(self):
-        self.record_separator = "\n"
-        self.field_separator = " "
-
-    def gen_result(
-        self, result: Any, config: PrinterConfig
-    ) -> Generator[str, None, None]:
-        if result is _UNDEFINED_:
-            return
-        header, table = self.to_table(result, header=config.header)
-        if not isinstance(header, SynthesizedHeader):
-            yield self.field_separator.join(header) + self.record_separator
-        for record in table:
-            yield self.field_separator.join(record) + self.record_separator
-
-
-class CsvPrinter(Printer):
-    """A printer that prints out the results in CSV format."""
-
-    def __init__(self, *, print_header=False, delimiter=",", dialect=csv.excel):
-        self.print_header = print_header
-        self.delimiter = delimiter
-        self.dialect = dialect
-        self.writer = None
-
-    def gen_result(
-        self, result: Any, config: PrinterConfig
-    ) -> Generator[str, None, None]:
-        if result is _UNDEFINED_:
-            return
-        header, table_result = self.to_table(result, header=config.header)
-        output = io.StringIO()
-        try:
-            self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
-        except csv.Error as exc:
-            if "unknown dialect" in str(exc):
-                raise RuntimeError(f'Unknown dialect "{self.dialect}"') from exc
-            raise RuntimeError(exc) from exc
-        if self.print_header:
-            self.writer.writerow(header)
-            yield self._pop_value(output)
-        for record in table_result:
-            self.writer.writerow(record)
-            yield self._pop_value(output)
-
-    def _pop_value(self, stringio):
-        value = stringio.getvalue()
-        stringio.seek(0)
-        stringio.truncate(0)
-        return value
-
-
-class _MarkdownRowFormat:
-    def __init__(self, widths):
-        self._width_formats = [f"{{:{w}}}" for w in widths]
-        self._row_template = (
-            "| " + " | ".join(self._width_formats) + " |" if widths else "|"
-        )
-        self._cont_row_template = (
-            ": " + " : ".join(self._width_formats) + " :" if widths else ":"
-        )
-        self._wrappers = [
-            textwrap.TextWrapper(
-                width=w,
-                expand_tabs=False,
-                replace_whitespace=False,
-                drop_whitespace=False,
-            )
-            for w in widths
-        ]
-
-    def format(self, cells: Sequence[Any]) -> str:
-        """Formats the given list of cells in Markdown."""
-        cell_lines = [
-            wrapper.wrap(str(cell)) if wrapper else [cell]
-            for wrapper, cell in zip_longest(self._wrappers, cells)  # type: ignore
-        ]
-        line_cells = zip_longest(*cell_lines, fillvalue="")  # type: ignore
-        result = ""
-        for i, line_cell in enumerate(line_cells):
-            # If there are extra columns that are not found in the header, also print them out.
-            # While that's not valid markdown, it's better than silently discarding the values.
-            extra_length = len(line_cell) - len(self._width_formats)
-            if not i:
-                template = self._row_template + "".join(
-                    " {} |" for _ in range(extra_length)
-                )
-                result += template.format(*line_cell) + "\n"
-            else:
-                template = self._cont_row_template + "".join(
-                    " {} :" for _ in range(extra_length)
-                )
-                result += self._cont_row_template.format(*line_cell) + "\n"
-        return result
-
-
-class MarkdownPrinter(Printer):
-    """Prints the result in the markdown table format. Note that if the input
-    data does not conform to a table-like structure (e.g. have different number
-    of fields in different rows), the output may not be valid markdown."""
-
-    def _allocate_width(self, header: Sequence[str], table):
-        if sys.stdout.isatty():
-            available_width, _ = shutil.get_terminal_size((100, 24))
-        else:
-            available_width = int(os.getenv("PYOLIN_TABLE_WIDTH", "100"))
-        # Subtract number of characters used by markdown
-        available_width -= 2 + 3 * (len(header) - 1) + 2
-        remaining_space = available_width
-        record_lens = zip(*[[len(c) for c in record] for record in table])
-        lens = {
-            i: max(len(h), *c_lens)
-            for i, (h, c_lens) in enumerate(zip(header, record_lens))
-        }
-        widths = [0] * len(header)
-        while lens:
-            to_del = []
-            for i, length in lens.items():
-                if length < remaining_space / len(lens):
-                    widths[i] = length
-                    to_del.append(i)
-            for i in to_del:
-                del lens[i]
-            if not to_del:
-                divided = floor(remaining_space / len(lens))
-                remainder = remaining_space % len(lens)
-                for i in lens:
-                    widths[i] = divided + 1 if i < remainder else divided
-                break
-
-            remaining_space = available_width - sum(widths)
-            if remaining_space <= 0:
-                break
-        return [max(w, 1) for w in widths]
-
-    def gen_result(
-        self, result: Any, config: PrinterConfig
-    ) -> Generator[str, None, None]:
-        if result is _UNDEFINED_:
-            return
-        header, table_result = self.to_table(result, header=config.header)
-        table1, table2, table3 = itertools.tee(table_result, 3)
-        widths = self._allocate_width(header, itertools.islice(table2, 10))
-        row_format = _MarkdownRowFormat(widths)
-        if not header and not any(True for _ in table3):
-            return  # Empty result, skip printing
-        if header:
-            # Edge case: don't print out an empty header
-            yield row_format.format(header)
-            yield "| " + " | ".join("-" * w for w in widths) + " |\n"
-        for record in table1:
-            yield row_format.format(record)
-
-
-class ReprPrinter(Printer):
-    """Prints the result out using Python's `repr()` function."""
-
-    def gen_result(self, result: Any, config: PrinterConfig):
-        yield repr(result) + "\n"
-
-
-class StrPrinter(Printer):
-    """Prints the result out using Python's `str()` function."""
-
-    def gen_result(self, result: Any, config: PrinterConfig):
-        result = str(result)
-        if result:
-            yield result + "\n"
-
-
-class BinaryPrinter(Printer):
-    """Writes the result as binary out to stdout. This is typically used when
-    redirecting the output to a file or to another program."""
-
-    def gen_result(self, result: Any, config: PrinterConfig):
-        if isinstance(result, str):
-            yield bytes(result, "utf-8")
-        else:
-            yield bytes(result)
-
-    def print_result(self, result: Any, config: PrinterConfig):
-        try:
-            for line in self.gen_result(result, config):
-                sys.stdout.buffer.write(line)
-        except BrokenPipeError:
-            clean_close_stdout_and_stderr()
-            sys.exit(141)
-
-
-PRINTERS = {
-    "auto": AutoPrinter,
-    "txt": TxtPrinter,
-    "awk": TxtPrinter,
-    "unix": TxtPrinter,
-    "csv": CsvPrinter,
-    "tsv": lambda: CsvPrinter(delimiter="\t"),
-    "markdown": MarkdownPrinter,
-    "md": MarkdownPrinter,
-    "table": MarkdownPrinter,
-    "repr": ReprPrinter,
-    "str": StrPrinter,
-    "binary": BinaryPrinter,
-}
+# See PluginContext.export_printers
+PRINTERS = {}
 
 
 def new_printer(output_format: str) -> Printer:

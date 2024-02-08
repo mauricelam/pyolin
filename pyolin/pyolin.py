@@ -172,7 +172,7 @@ def run(*args, **kwargs):
 @command(
     Argument("field_separator", aliases="F"),
     Argument("input_format"),
-    Argument("output_format", choices=list(PRINTERS)),
+    Argument("output_format"),
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
 def _command_line(

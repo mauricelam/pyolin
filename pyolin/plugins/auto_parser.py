@@ -10,7 +10,7 @@ from pyolin.ioformat import (
 from pyolin.core import PluginContext
 from pyolin.plugins.csv_parser import CsvParser
 from pyolin.plugins.json import JsonParser
-from pyolin.plugins.txt_parser import TxtParser
+from pyolin.plugins.txt_format import TxtParser
 from pyolin.record import Record
 from pyolin.util import peek_iter
 

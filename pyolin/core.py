@@ -7,7 +7,7 @@ from pyolin.ioformat import (
     AbstractParser,
     Printer,
     PrinterConfig,
-    create_parser,
+    new_parser,
     new_printer,
 )
 from pyolin.record import Header
@@ -123,7 +123,7 @@ class PyolinConfig:
         field_separator: Optional[str] = None,
     ) -> AbstractParser:
         """Create a new parser based on the given format and the current configuration."""
-        return create_parser(
+        return new_parser(
             parser_format,
             record_separator or self._record_separator,
             field_separator or self._field_separator,

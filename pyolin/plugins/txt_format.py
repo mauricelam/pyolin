@@ -1,12 +1,16 @@
 import re
 import typing
-from typing import Generator, Iterable, Optional
+from typing import Any, Generator, Iterable, Optional
 from pyolin.ioformat import (
     AbstractParser,
+    Printer,
+    PrinterConfig,
+    SynthesizedHeader,
     gen_split,
 )
 from pyolin.core import PluginContext
 from pyolin.record import Record
+from pyolin.util import _UNDEFINED_
 
 
 class TxtParser(AbstractParser):
@@ -48,5 +52,26 @@ class TxtParser(AbstractParser):
             ) from None
 
 
+class TxtPrinter(Printer):
+    """A printer that prints out the results in a space-separated format,
+    similar to AWK."""
+
+    def __init__(self):
+        self.record_separator = "\n"
+        self.field_separator = " "
+
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
+        if result is _UNDEFINED_:
+            return
+        header, table = self.to_table(result, header=config.header)
+        if not isinstance(header, SynthesizedHeader):
+            yield self.field_separator.join(header) + self.record_separator
+        for record in table:
+            yield self.field_separator.join(record) + self.record_separator
+
+
 def register(ctx: PluginContext, _input_stream, _config):
     ctx.export_parsers(txt=TxtParser, awk=TxtParser)
+    ctx.export_printers(txt=TxtPrinter, awk=TxtPrinter)

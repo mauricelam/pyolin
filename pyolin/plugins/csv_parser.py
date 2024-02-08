@@ -1,11 +1,12 @@
 import csv
+import io
 import re
-from typing import Generator, Iterable, List, Optional, Type, Union
+from typing import Any, Generator, Iterable, List, Optional, Type, Union
 import typing
 from pyolin.core import PluginContext
-from pyolin.ioformat import AbstractParser, gen_split
+from pyolin.ioformat import AbstractParser, Printer, PrinterConfig, gen_split
 from pyolin.record import Record
-from pyolin.util import debug, peek_iter
+from pyolin.util import _UNDEFINED_, debug, peek_iter
 
 
 class CustomSniffer(csv.Sniffer):
@@ -138,10 +139,50 @@ class CsvParser(AbstractParser):
             yield Record(*fields, source=line)
 
 
+class CsvPrinter(Printer):
+    """A printer that prints out the results in CSV format."""
+
+    def __init__(self, *, print_header=False, delimiter=",", dialect=csv.excel):
+        self.print_header = print_header
+        self.delimiter = delimiter
+        self.dialect = dialect
+        self.writer = None
+
+    def gen_result(
+        self, result: Any, config: PrinterConfig
+    ) -> Generator[str, None, None]:
+        if result is _UNDEFINED_:
+            return
+        header, table_result = self.to_table(result, header=config.header)
+        output = io.StringIO()
+        try:
+            self.writer = csv.writer(output, self.dialect, delimiter=self.delimiter)
+        except csv.Error as exc:
+            if "unknown dialect" in str(exc):
+                raise RuntimeError(f'Unknown dialect "{self.dialect}"') from exc
+            raise RuntimeError(exc) from exc
+        if self.print_header:
+            self.writer.writerow(header)
+            yield self._pop_value(output)
+        for record in table_result:
+            self.writer.writerow(record)
+            yield self._pop_value(output)
+
+    def _pop_value(self, stringio):
+        value = stringio.getvalue()
+        stringio.seek(0)
+        stringio.truncate(0)
+        return value
+
+
 def register(ctx: PluginContext, _input_stream, _config):
     ctx.export_parsers(
         csv=CsvParser,
         csv_excel=lambda rs, fs: CsvParser(rs, fs, dialect=csv.excel),
         csv_unix=lambda rs, fs: CsvParser(rs, fs, dialect=csv.unix_dialect),
         tsv=lambda rs, fs: CsvParser(rs, "\t"),
+    )
+    ctx.export_printers(
+        csv=CsvPrinter,
+        tsv=lambda: CsvPrinter(delimiter="\t"),
     )
