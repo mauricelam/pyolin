@@ -10,11 +10,7 @@ def test_pip(pyolin):
         proc.stdin.close()
         assert_contains(
             proc.stdout.read().lstrip("\n"),
-            string_block(
-                """
-                  pip <command> [options]
-                """
-            ),
+            "pip <command> [options]",
         )
 
 
