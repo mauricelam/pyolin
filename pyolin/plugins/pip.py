@@ -27,7 +27,7 @@ class PipCustomPrinter(Printer):
                 "e.g. `pyolin pip install yaml`"
             )
         try:
-            subprocess.run(["pip", *sys.argv[1:]], check=True)
+            subprocess.run([sys.executable, "-m", "pip", *sys.argv[1:]], check=True)
         except BrokenPipeError:
             clean_close_stdout_and_stderr()
             sys.exit(141)
