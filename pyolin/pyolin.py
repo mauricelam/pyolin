@@ -92,7 +92,12 @@ def _execute_internal(
 
         header = [f.str for f in record_seq.header] if record_seq.header else None
         dataframe = pd.DataFrame(record_seq, columns=header)
-        return dataframe.apply(pd.to_numeric, errors="ignore")  # type: ignore
+        def to_numeric(df):
+            try:
+                return pd.to_numeric(df)
+            except ValueError:
+                return df
+        return dataframe.apply(to_numeric)  # type: ignore
 
     def file_scoped(func):
         return CachedItem(func, on_accessed=lambda: config.set_scope(None, "file"))

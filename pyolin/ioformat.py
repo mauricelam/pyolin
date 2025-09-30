@@ -196,7 +196,7 @@ class Printer(abc.ABC):
         try:
             for line in self.gen_result(result, config=config):
                 print(line, flush=True, end="")
-        except BrokenPipeError:
+        except BrokenPipeError as e:
             clean_close_stdout_and_stderr()
             sys.exit(141)
 

@@ -239,17 +239,21 @@ def clean_close_stdout_and_stderr() -> None:
     """Flushes and cleans stdout even if an exception is thrown or interrupted
     in the middle of the cleanup.
 
-    https://bugs.python.org/issue11380#msg248579"""
+    https://bugs.python.org/issue11380#msg248579
+    https://docs.python.org/3/library/signal.html#note-on-sigpipe"""
+    # Python flushes standard streams on exit; redirect remaining output
+    # to devnull to avoid another BrokenPipeError at shutdown
+    devnull = os.open(os.devnull, os.O_WRONLY)
     try:
         sys.stdout.flush()
     finally:
         try:
-            sys.stdout.close()
+            os.dup2(devnull, sys.stdout.fileno())
         finally:
             try:
                 sys.stderr.flush()
             finally:
-                sys.stderr.close()
+                os.dup2(devnull, sys.stderr.fileno())
 
 
 T = TypeVar("T")

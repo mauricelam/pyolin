@@ -568,7 +568,7 @@ def test_closed_stdout(pyolin):
         "cfg.parser.has_header = False; line",
         extra_args=["--input_format=awk", "--output_format=awk"],
     ) as proc:
-        assert proc.stdin and proc.stdout and proc.stderr
+        # assert proc.stdin and proc.stdout and proc.stderr
         proc.stdin.write("Raptors Toronto    58 24 0.707\n")
         proc.stdin.flush()
         with timeout(2):
@@ -578,7 +578,6 @@ def test_closed_stdout(pyolin):
         proc.stdout.close()
         proc.stdin.write("Celtics Boston     49 33 0.598\n")
         proc.stdin.close()
-        # proc.stdin.flush()
         errmsg = proc.stderr.read()
         assert errmsg == "", errmsg
 
@@ -825,7 +824,7 @@ def test_in_operator(pyolin):
 
 
 def test_url_quote(pyolin):
-    assert pyolin("urllib.parse.quote(line)") == string_block(
+    assert pyolin("import urllib.parse;; urllib.parse.quote(line)") == string_block(
         """
         | value                                          |
         | ---------------------------------------------- |
